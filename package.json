@@ -1,0 +1,73 @@
+{
+  "name": "acd-cafe-backend",
+  "version": "1.0.0",
+  "description": "ACD Cafe - Real-Time Ordering, KDS & Billing System (Phase 1 backend)",
+  "type": "module",
+  "main": "dist/server.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "rimraf dist && tsc -p tsconfig.build.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src tests",
+    "lint:fix": "eslint src tests --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\" \"*.{json,md}\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run typecheck && npm run lint && npm run test",
+    "seed": "tsx src/scripts/seed.ts",
+    "menu:check": "tsx src/scripts/importProducts.ts --dry-run",
+    "menu:import": "tsx src/scripts/importProducts.ts",
+    "seed:reset": "tsx src/scripts/seed.ts --reset"
+  },
+  "keywords": [
+    "cafe",
+    "pos",
+    "kds",
+    "express",
+    "typescript",
+    "socket.io"
+  ],
+  "license": "ISC",
+  "dependencies": {
+    "@types/multer": "^2.2.0",
+    "bcryptjs": "^3.0.2",
+    "compression": "^1.8.1",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "express-validator": "^7.3.2",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.19.1",
+    "multer": "^2.3.0",
+    "socket.io": "^4.8.1",
+    "winston": "^3.19.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/compression": "^1.8.1",
+    "@types/cookie-parser": "^1.4.9",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^22.15.3",
+    "eslint": "^10.9.1",
+    "eslint-config-prettier": "^10.1.8",
+    "exceljs": "^4.4.0",
+    "prettier": "^3.9.6",
+    "rimraf": "^6.0.1",
+    "socket.io-client": "^4.8.3",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.68.0",
+    "vitest": "^4.1.11"
+  }
+}
