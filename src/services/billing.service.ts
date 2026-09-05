@@ -371,6 +371,8 @@ export async function confirmExport(input: {
 export interface ListExportsFilter {
   status?: ExportStatus;
   sessionId?: string;
+  /** "Show me every bill for M2" — the question a waiter actually asks. */
+  tableCode?: string;
   from?: Date;
   to?: Date;
 }
@@ -383,6 +385,8 @@ export async function listExports(
   const query: Record<string, unknown> = {};
   if (filter.status) query.exportStatus = filter.status;
   if (filter.sessionId) query.sessionId = new Types.ObjectId(filter.sessionId);
+  // Stored uppercase by the schema, so match uppercase regardless of input.
+  if (filter.tableCode) query.tableCode = filter.tableCode.trim().toUpperCase();
   if (filter.from || filter.to) {
     query.generatedAt = {
       ...(filter.from ? { $gte: filter.from } : {}),

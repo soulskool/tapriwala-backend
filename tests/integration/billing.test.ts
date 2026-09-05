@@ -89,7 +89,12 @@ describe('consolidation', () => {
   });
 
   it('excludes cancelled items but still lists them for scrutiny', async () => {
-    const extra = await waiterOrder(h, sessionId, [{ productCode: 'BEV002', quantity: 1 }], 'bill-round-4');
+    const extra = await waiterOrder(
+      h,
+      sessionId,
+      [{ productCode: 'BEV002', quantity: 1 }],
+      'bill-round-4',
+    );
     await setItemStatus(
       h,
       extra.data._id,

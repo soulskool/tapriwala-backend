@@ -15,12 +15,7 @@ import type { StorageDriver, StoredFile, UploadInput } from './types.js';
  * missing Bunny key fails on startup rather than on the first upload mid-service.
  */
 
-export const ALLOWED_IMAGE_TYPES = [
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/avif',
-] as const;
+export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'] as const;
 
 /** 3 MB. Menu photos are taken on a phone; anything larger is unresized. */
 export const MAX_IMAGE_BYTES = 3 * 1024 * 1024;

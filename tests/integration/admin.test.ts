@@ -16,7 +16,12 @@ let sessionId = '';
 beforeAll(async () => {
   h = await createHarness();
 
-  const order = await customerOrder(h, 'M2', [{ productCode: 'BEV001', quantity: 2 }], 'admin-1-order');
+  const order = await customerOrder(
+    h,
+    'M2',
+    [{ productCode: 'BEV001', quantity: 2 }],
+    'admin-1-order',
+  );
   sessionId = order.data.sessionId;
 
   const ticket = await findTicket(h, sessionId);

@@ -50,9 +50,9 @@ export async function list(filter: ListProductsFilter): Promise<ProductMasterDoc
 }
 
 /** Menu grouped by category — the shape the customer and waiter screens render. */
-export async function getMenu(options: { forCustomer: boolean }): Promise<
-  { category: string; items: unknown[] }[]
-> {
+export async function getMenu(options: {
+  forCustomer: boolean;
+}): Promise<{ category: string; items: unknown[] }[]> {
   const query: Record<string, unknown> = { isActive: true };
   // Staff still see 86'd items (greyed out); customers should not see them at all.
   if (options.forCustomer) query.isAvailable = true;
@@ -351,7 +351,7 @@ export async function bulkUpsert(rows: BulkRow[], actor: Actor): Promise<BulkRes
 /** Distinct category list for the menu tabs. */
 export async function getCategories(): Promise<string[]> {
   const categories = await ProductMaster.distinct('category', { isActive: true });
-  return (categories).sort((a, b) => a.localeCompare(b));
+  return categories.sort((a, b) => a.localeCompare(b));
 }
 
 /**

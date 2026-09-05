@@ -16,11 +16,7 @@ export const openSessionValidation: ValidationChain[] = [
 export const closeSessionValidation: ValidationChain[] = [
   body('billingExportId').optional().isMongoId().withMessage('billingExportId must be a valid id'),
   body('note').optional().trim().isLength({ max: 300 }),
-  body('force')
-    .optional()
-    .isBoolean()
-    .withMessage('force must be a boolean')
-    .toBoolean(),
+  body('force').optional().isBoolean().withMessage('force must be a boolean').toBoolean(),
 ];
 
 /** POST /sessions/:id/transfer — move a running session to another table. */

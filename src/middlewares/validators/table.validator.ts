@@ -13,9 +13,15 @@ export const createTableValidation: ValidationChain[] = [
     .matches(/^[A-Za-z0-9 _-]+$/)
     .withMessage('Table code may contain letters, numbers, space, hyphen and underscore only'),
 
-  body('zone').isIn(TABLE_ZONE_VALUES).withMessage(`zone must be one of: ${TABLE_ZONE_VALUES.join(', ')}`),
+  body('zone')
+    .isIn(TABLE_ZONE_VALUES)
+    .withMessage(`zone must be one of: ${TABLE_ZONE_VALUES.join(', ')}`),
 
-  body('displayOrder').optional().isInt({ min: 0 }).withMessage('displayOrder must be 0 or greater').toInt(),
+  body('displayOrder')
+    .optional()
+    .isInt({ min: 0 })
+    .withMessage('displayOrder must be 0 or greater')
+    .toInt(),
 
   body('seatingCapacity')
     .optional()
@@ -23,7 +29,11 @@ export const createTableValidation: ValidationChain[] = [
     .withMessage('seatingCapacity must be between 1 and 50')
     .toInt(),
 
-  body('notes').optional().trim().isLength({ max: 200 }).withMessage('notes must be at most 200 characters'),
+  body('notes')
+    .optional()
+    .trim()
+    .isLength({ max: 200 })
+    .withMessage('notes must be at most 200 characters'),
 ];
 
 /** PATCH /tables/:id */
@@ -35,7 +45,10 @@ export const updateTableValidation: ValidationChain[] = [
     .withMessage('Table code must be 1–12 characters')
     .matches(/^[A-Za-z0-9 _-]+$/)
     .withMessage('Table code may contain letters, numbers, space, hyphen and underscore only'),
-  body('zone').optional().isIn(TABLE_ZONE_VALUES).withMessage(`zone must be one of: ${TABLE_ZONE_VALUES.join(', ')}`),
+  body('zone')
+    .optional()
+    .isIn(TABLE_ZONE_VALUES)
+    .withMessage(`zone must be one of: ${TABLE_ZONE_VALUES.join(', ')}`),
   body('displayOrder').optional().isInt({ min: 0 }).toInt(),
   body('seatingCapacity').optional().isInt({ min: 1, max: 50 }).toInt(),
   body('isActive').optional().isBoolean().toBoolean(),

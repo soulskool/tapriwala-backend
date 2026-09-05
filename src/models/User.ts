@@ -56,6 +56,7 @@ export function hashPin(pin: string): Promise<string> {
   return bcrypt.hash(pin, APP_CONSTANTS.BCRYPT_ROUNDS);
 }
 
-export const User: UserModel = (mongoose.models.User as UserModel) || model<IUser, UserModel>('User', userSchema);
+export const User: UserModel =
+  (mongoose.models.User as UserModel) || model<IUser, UserModel>('User', userSchema);
 
 export default User;

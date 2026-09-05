@@ -116,7 +116,11 @@ describe('upload', () => {
 
   it('maps the extension from the MIME type, not the upload name', async () => {
     fetchMock.mockImplementation(ok);
-    const stored = await driver.save({ ...upload, originalName: 'photo.exe', mimeType: 'image/webp' });
+    const stored = await driver.save({
+      ...upload,
+      originalName: 'photo.exe',
+      mimeType: 'image/webp',
+    });
     expect(stored.key.endsWith('.webp')).toBe(true);
   });
 

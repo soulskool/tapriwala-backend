@@ -15,22 +15,38 @@ import {
 
 const router = Router();
 
-router.use(authenticate, authorize(ROLES.BILLING));
+router.use(authenticate);
 
-/** Tables waiting at the counter. */
-router.get('/queue', billingController.queue);
+/**
+ * Reading the bill history is open to waiters; changing anything is not.
+ *
+ * A waiter genuinely needs "what was M2 billed?" on the floor — to answer a
+ * guest disputing a charge without walking them to the counter. Generating a
+ * bill, confirming it against the POS or retrying an export stay with the
+ * billing role, because those move money and mint a permanent bill number.
+ * Admin passes every check either way.
+ */
+const canReadBills = authorize(ROLES.BILLING, ROLES.WAITER);
 
 router.get(
   '/exports',
+  canReadBills,
   validate([...listExportsValidation, ...paginationQuery, ...dateRangeQuery]),
   billingController.listExports,
 );
 
 router.get(
   '/exports/:id',
+  canReadBills,
   validate([objectIdParam('id', 'Export id')]),
   billingController.getExport,
 );
+
+// Everything below this line is the counter's alone.
+router.use(authorize(ROLES.BILLING));
+
+/** Tables waiting at the counter. */
+router.get('/queue', billingController.queue);
 
 /** Record the legacy POS invoice number / outcome against a bill. */
 router.patch(

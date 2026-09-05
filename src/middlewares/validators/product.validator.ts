@@ -43,7 +43,11 @@ export const createProductValidation: ValidationChain[] = [
     .withMessage(`kitchenStation must be one of: ${KITCHEN_STATION_VALUES.join(', ')}`),
 
   body('description').optional().trim().isLength({ max: 300 }),
-  body('imageUrl').optional({ values: 'falsy' }).trim().isURL().withMessage('imageUrl must be a valid URL'),
+  body('imageUrl')
+    .optional({ values: 'falsy' })
+    .trim()
+    .isURL()
+    .withMessage('imageUrl must be a valid URL'),
   body('displayOrder').optional().isInt({ min: 0 }).toInt(),
   body('isAvailable').optional().isBoolean().toBoolean(),
   body('isActive').optional().isBoolean().toBoolean(),
@@ -64,7 +68,11 @@ export const updateProductValidation: ValidationChain[] = [
   body('taxPercent').optional().isFloat({ min: 0, max: 100 }).toFloat(),
   body('kitchenStation').optional().isIn(KITCHEN_STATION_VALUES),
   body('description').optional().trim().isLength({ max: 300 }),
-  body('imageUrl').optional({ values: 'falsy' }).trim().isURL().withMessage('imageUrl must be a valid URL'),
+  body('imageUrl')
+    .optional({ values: 'falsy' })
+    .trim()
+    .isURL()
+    .withMessage('imageUrl must be a valid URL'),
   body('displayOrder').optional().isInt({ min: 0 }).toInt(),
   body('isAvailable').optional().isBoolean().toBoolean(),
   body('isActive').optional().isBoolean().toBoolean(),
@@ -85,7 +93,10 @@ export const bulkUpsertProductsValidation: ValidationChain[] = [
   body('products.*.posName').trim().notEmpty().withMessage('Every row needs a posName'),
   body('products.*.displayName').trim().notEmpty().withMessage('Every row needs a displayName'),
   body('products.*.category').trim().notEmpty().withMessage('Every row needs a category'),
-  body('products.*.price').isFloat({ min: 0 }).withMessage('Every row needs a price of 0 or greater').toFloat(),
+  body('products.*.price')
+    .isFloat({ min: 0 })
+    .withMessage('Every row needs a price of 0 or greater')
+    .toFloat(),
   body('products.*.taxPercent').optional().isFloat({ min: 0, max: 100 }).toFloat(),
   body('products.*.kitchenStation').optional().isIn(KITCHEN_STATION_VALUES),
 ];

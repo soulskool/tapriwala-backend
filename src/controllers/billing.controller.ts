@@ -62,11 +62,7 @@ export const exportBill = asyncHandler(async (req, res) => {
 /** POST /billing/exports/:id/retry */
 export const retryExport = asyncHandler(async (req, res) => {
   const { method } = req.body as { method?: ExportMethod };
-  const record = await billingService.retryExport(
-    req.params.id as string,
-    getActor(req),
-    method,
-  );
+  const record = await billingService.retryExport(req.params.id as string, getActor(req), method);
   return sendSuccess(res, record, `Retry ${record.exportStatus}`);
 });
 
@@ -99,6 +95,7 @@ export const listExports = asyncHandler(async (req, res) => {
     {
       status: req.query.status as ExportStatus | undefined,
       sessionId: req.query.sessionId as string | undefined,
+      tableCode: req.query.tableCode as string | undefined,
       from: queryDate(req.query.from),
       to: queryDate(req.query.to),
     },

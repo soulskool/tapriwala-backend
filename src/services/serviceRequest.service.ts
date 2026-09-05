@@ -12,11 +12,7 @@ import {
   type ServiceRequestType,
 } from '../config/constants.js';
 import { env } from '../config/env.js';
-import {
-  ServiceRequest,
-  TableMaster,
-  type ServiceRequestDocument,
-} from '../models/index.js';
+import { ServiceRequest, TableMaster, type ServiceRequestDocument } from '../models/index.js';
 import { ApiError } from '../utils/ApiError.js';
 import { minutesSince } from '../utils/helpers.js';
 import { actorSnapshot, type Actor } from '../utils/actor.js';
@@ -70,11 +66,10 @@ export async function raise(
     if (input.note) existing.note = input.note;
     await existing.save();
 
-    broadcast(
-      SOCKET_EVENTS.SERVICE_REQUEST_UPDATE,
-      serializeRequest(existing),
-      { tableId: String(table._id), sessionId: existing.sessionId ? String(existing.sessionId) : null },
-    );
+    broadcast(SOCKET_EVENTS.SERVICE_REQUEST_UPDATE, serializeRequest(existing), {
+      tableId: String(table._id),
+      sessionId: existing.sessionId ? String(existing.sessionId) : null,
+    });
 
     return { request: existing, created: false };
   }

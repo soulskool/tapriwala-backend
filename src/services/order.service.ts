@@ -339,10 +339,7 @@ export async function updateItemStatus(
 
   // Kitchen may drive preparation, but only staff with wider rights may cancel
   // or mark served — those are floor/billing decisions, not cook decisions.
-  if (
-    input.actor.role === ROLES.KITCHEN &&
-    !KITCHEN_SETTABLE_STATUSES.includes(input.status)
-  ) {
+  if (input.actor.role === ROLES.KITCHEN && !KITCHEN_SETTABLE_STATUSES.includes(input.status)) {
     throw ApiError.forbidden('Kitchen can set accepted, preparing or ready only');
   }
 
@@ -495,6 +492,8 @@ export function toKdsTicket(
     zone?: string;
   };
 
+  const totals = totalsForItems(doc.items);
+
   return {
     roundId: String(doc._id),
     sessionId: String(doc.sessionId),
@@ -508,6 +507,12 @@ export function toKdsTicket(
     placedAt: doc.placedAt,
     elapsedMinutes: minutesSince(doc.placedAt),
     status: doc.status,
+    // Recomputed from the live items rather than read off the stored round
+    // totals: cancelling an item must take its money off the card at the same
+    // moment it takes the line off it.
+    subtotal: totals.subtotal,
+    tax: totals.taxTotal,
+    total: totals.total,
     items: doc.items.map((item) => ({
       itemId: String(item._id),
       productCode: item.productCode,
@@ -519,6 +524,8 @@ export function toKdsTicket(
       // Flags an item the kitchen 86'd *after* it was ordered, so the cook can
       // raise it with the floor instead of the line vanishing silently.
       unavailable: unavailableCodes.has(item.productCode),
+      unitPrice: item.unitPrice,
+      lineTotal: round2(item.unitPrice * item.quantity),
     })),
   };
 }
@@ -582,12 +589,12 @@ export async function getKitchenQueue(options: KitchenQueueOptions = {}): Promis
     query.placedAt = { $gte: new Date(Date.now() - options.sinceMinutes * 60_000) };
   }
 
-  const rounds = await dropClosedSessions(await OrderRound.find(query).sort({ placedAt: 1 }).lean());
+  const rounds = await dropClosedSessions(
+    await OrderRound.find(query).sort({ placedAt: 1 }).lean(),
+  );
 
   // Items 86'd since the order was placed get flagged on the ticket.
-  const unavailable = await ProductMaster.find({ isAvailable: false })
-    .select('productCode')
-    .lean();
+  const unavailable = await ProductMaster.find({ isAvailable: false }).select('productCode').lean();
   const unavailableCodes = new Set(unavailable.map((product) => product.productCode));
 
   const tickets = rounds.map((round) =>

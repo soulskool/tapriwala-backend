@@ -67,7 +67,12 @@ describe('the 86 toggle', () => {
       token: h.tokens.kitchen,
       body: { isAvailable: true },
     });
-    const order = await customerOrder(h, 'R1', [{ productCode: 'BEV003', quantity: 1 }], 'p86-1-order');
+    const order = await customerOrder(
+      h,
+      'R1',
+      [{ productCode: 'BEV003', quantity: 1 }],
+      'p86-1-order',
+    );
     await h.api('PATCH', `/products/${coldCoffeeId}/availability`, {
       token: h.tokens.kitchen,
       body: { isAvailable: false },
@@ -87,7 +92,12 @@ describe('the 86 toggle', () => {
 
 describe('price changes', () => {
   it('never re-prices a round that was already placed', async () => {
-    const order = await customerOrder(h, 'V1', [{ productCode: 'BEV001', quantity: 1 }], 'price-1-order');
+    const order = await customerOrder(
+      h,
+      'V1',
+      [{ productCode: 'BEV001', quantity: 1 }],
+      'price-1-order',
+    );
 
     await h.api('PATCH', `/products/${teaId}`, { token: h.tokens.admin, body: { price: 999 } });
 
@@ -101,7 +111,12 @@ describe('price changes', () => {
 
   it('applies the new price to the next order', async () => {
     await h.api('PATCH', `/products/${teaId}`, { token: h.tokens.admin, body: { price: 40 } });
-    const order = await customerOrder(h, 'L5', [{ productCode: 'BEV001', quantity: 1 }], 'price-2-order');
+    const order = await customerOrder(
+      h,
+      'L5',
+      [{ productCode: 'BEV001', quantity: 1 }],
+      'price-2-order',
+    );
 
     expect(order.data.total).toBe(42);
     await h.api('PATCH', `/products/${teaId}`, { token: h.tokens.admin, body: { price: 30 } });

@@ -153,7 +153,12 @@ describe('requesting the bill', () => {
   });
 
   it('moves the session into the billing queue', async () => {
-    const order = await customerOrder(h, 'M2', [{ productCode: 'BEV001', quantity: 1 }], 'bill-1-order');
+    const order = await customerOrder(
+      h,
+      'M2',
+      [{ productCode: 'BEV001', quantity: 1 }],
+      'bill-1-order',
+    );
     sessionId = order.data.sessionId;
 
     await h.api('POST', `/public/tables/${h.tables.M2!.code}/service-requests`, {

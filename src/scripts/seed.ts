@@ -61,7 +61,6 @@ const TABLES = [
   })),
 ];
 
-
 /**
  * One login per role, so every screen is reachable straight after seeding.
  *
@@ -152,7 +151,9 @@ async function seedUsers(): Promise<void> {
 }
 
 async function printQrSheet(): Promise<void> {
-  const tables = await TableMaster.find({ isActive: true }).sort({ zone: 1, displayOrder: 1 }).lean();
+  const tables = await TableMaster.find({ isActive: true })
+    .sort({ zone: 1, displayOrder: 1 })
+    .lean();
   logger.info('QR URLs to print:');
   for (const table of tables) {
     logger.info(`  ${table.code.padEnd(4)} ${qrUrl(table.code)}`);

@@ -43,10 +43,7 @@ describe('deriveRoundStatus', () => {
   });
 
   it('ignores cancelled items — they must not hold a ticket back', () => {
-    const status = deriveRoundStatus([
-      item(ITEM_STATUS.READY),
-      item(ITEM_STATUS.CANCELLED),
-    ]);
+    const status = deriveRoundStatus([item(ITEM_STATUS.READY), item(ITEM_STATUS.CANCELLED)]);
     expect(status).toBe(ROUND_STATUS.READY);
   });
 
@@ -105,24 +102,22 @@ describe('deriveSessionStatus', () => {
 
   it('lets bill_requested outrank everything else', () => {
     // Staff must see "wants to pay" even if an add-on is still cooking.
-    expect(
-      deriveSessionStatus([round(ITEM_STATUS.PENDING)], { billRequested: true }),
-    ).toBe(SESSION_STATUS.BILL_REQUESTED);
+    expect(deriveSessionStatus([round(ITEM_STATUS.PENDING)], { billRequested: true })).toBe(
+      SESSION_STATUS.BILL_REQUESTED,
+    );
   });
 
   it('spans rounds: the slowest item anywhere in the session wins', () => {
-    const status = deriveSessionStatus(
-      [round(ITEM_STATUS.SERVED), round(ITEM_STATUS.PENDING)],
-      { billRequested: false },
-    );
+    const status = deriveSessionStatus([round(ITEM_STATUS.SERVED), round(ITEM_STATUS.PENDING)], {
+      billRequested: false,
+    });
     expect(status).toBe(SESSION_STATUS.ORDER_PENDING);
   });
 
   it('ignores a fully cancelled round', () => {
-    const status = deriveSessionStatus(
-      [round(ITEM_STATUS.CANCELLED), round(ITEM_STATUS.READY)],
-      { billRequested: false },
-    );
+    const status = deriveSessionStatus([round(ITEM_STATUS.CANCELLED), round(ITEM_STATUS.READY)], {
+      billRequested: false,
+    });
     expect(status).toBe(SESSION_STATUS.READY);
   });
 });

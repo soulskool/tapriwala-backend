@@ -15,9 +15,7 @@ import { queryBool, queryDate } from '../utils/helpers.js';
 
 /** GET /admin/users */
 export const listUsers = asyncHandler(async (req, res) => {
-  const users = await authService.listUsers(
-    queryBool(req.query.includeInactive),
-  );
+  const users = await authService.listUsers(queryBool(req.query.includeInactive));
   return sendSuccess(
     res,
     users.map((user) => ({

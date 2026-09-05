@@ -98,7 +98,9 @@ describe('error envelope', () => {
   });
 
   it('turns a malformed ObjectId into a 400, not a 500', async () => {
-    expect((await h.api('GET', '/sessions/not-an-id', { token: h.tokens.waiter })).status).toBe(400);
+    expect((await h.api('GET', '/sessions/not-an-id', { token: h.tokens.waiter })).status).toBe(
+      400,
+    );
   });
 
   it('404s an unknown route with the standard shape', async () => {

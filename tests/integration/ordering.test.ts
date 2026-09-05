@@ -1,6 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { createHarness, customerOrder, tile, waiterOrder, type Harness } from '../helpers/harness.js';
+import {
+  createHarness,
+  customerOrder,
+  tile,
+  waiterOrder,
+  type Harness,
+} from '../helpers/harness.js';
 
 /**
  * The customer QR ordering flow and add-on rounds — §4.1 and §4.5 of the plan.
@@ -77,7 +83,12 @@ describe('placing the first order', () => {
   });
 
   it('treats a replayed submission as the same order, not a second ticket', async () => {
-    const retry = await customerOrder(h, 'M2', [{ productCode: 'BEV001', quantity: 2 }], 'test-round-1');
+    const retry = await customerOrder(
+      h,
+      'M2',
+      [{ productCode: 'BEV001', quantity: 2 }],
+      'test-round-1',
+    );
 
     expect(retry.status).toBe(200);
     expect(retry.data.kotId).toBe(kot1);
@@ -85,7 +96,12 @@ describe('placing the first order', () => {
 
   it('scopes the idempotency key to the session, so tables cannot collide', async () => {
     // Same key, different table: must create a genuinely new order.
-    const other = await customerOrder(h, 'R1', [{ productCode: 'BEV001', quantity: 1 }], 'test-round-1');
+    const other = await customerOrder(
+      h,
+      'R1',
+      [{ productCode: 'BEV001', quantity: 1 }],
+      'test-round-1',
+    );
 
     expect(other.status).toBe(201);
     expect(other.data.sessionId).not.toBe(sessionId);
@@ -142,14 +158,24 @@ describe('order validation', () => {
 
 describe('add-on rounds', () => {
   it('attaches a later customer order to the same session', async () => {
-    const round2 = await customerOrder(h, 'M2', [{ productCode: 'BEV003', quantity: 1 }], 'test-round-2');
+    const round2 = await customerOrder(
+      h,
+      'M2',
+      [{ productCode: 'BEV003', quantity: 1 }],
+      'test-round-2',
+    );
 
     expect(round2.data.sessionId).toBe(sessionId);
     expect(round2.data.roundNumber).toBe(2);
   });
 
   it('accepts a waiter round on the same session, tagged by source', async () => {
-    const round3 = await waiterOrder(h, sessionId, [{ productCode: 'SNK001', quantity: 1 }], 'test-round-3');
+    const round3 = await waiterOrder(
+      h,
+      sessionId,
+      [{ productCode: 'SNK001', quantity: 1 }],
+      'test-round-3',
+    );
 
     expect(round3.data.roundNumber).toBe(3);
     expect(round3.data.source).toBe('waiter');

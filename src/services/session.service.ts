@@ -539,10 +539,9 @@ export async function transfer(input: {
 
   const occupied = await findActiveByTable(target._id);
   if (occupied) {
-    throw ApiError.conflict(
-      `${target.code} already has an open session. Close or move it first.`,
-      { blockingSessionId: String(occupied._id) },
-    );
+    throw ApiError.conflict(`${target.code} already has an open session. Close or move it first.`, {
+      blockingSessionId: String(occupied._id),
+    });
   }
 
   const fromTableId = session.tableId;

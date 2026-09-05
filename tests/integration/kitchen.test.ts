@@ -80,7 +80,12 @@ describe('item-level progress', () => {
   });
 
   it('allows a forward skip: a fast drink goes straight to ready', async () => {
-    const order = await waiterOrder(h, sessionId, [{ productCode: 'BEV002', quantity: 1 }], 'kitchen-skip-1');
+    const order = await waiterOrder(
+      h,
+      sessionId,
+      [{ productCode: 'BEV002', quantity: 1 }],
+      'kitchen-skip-1',
+    );
     const result = await setItemStatus(h, order.data._id, order.data.items[0]._id, 'ready');
 
     expect(result.status).toBe(200);
@@ -123,7 +128,14 @@ describe('item-level progress', () => {
 
 describe('who may do what', () => {
   it('does not let the kitchen cancel an item', async () => {
-    const result = await setItemStatus(h, roundId, sandwichItemId, 'cancelled', h.tokens.kitchen, 'no');
+    const result = await setItemStatus(
+      h,
+      roundId,
+      sandwichItemId,
+      'cancelled',
+      h.tokens.kitchen,
+      'no',
+    );
     expect(result.status).toBe(403);
   });
 
@@ -191,7 +203,12 @@ describe('queue behaviour', () => {
  */
 describe('a closed table leaves nothing on the board', () => {
   it('drops the ticket when a session is billed out with items still ready', async () => {
-    const order = await customerOrder(h, 'L5', [{ productCode: 'BEV001', quantity: 5 }], 'ghost-round-1');
+    const order = await customerOrder(
+      h,
+      'L5',
+      [{ productCode: 'BEV001', quantity: 5 }],
+      'ghost-round-1',
+    );
     const closingSession = order.data.sessionId;
 
     const ticket = await findTicket(h, closingSession);
@@ -212,7 +229,12 @@ describe('a closed table leaves nothing on the board', () => {
   });
 
   it('drops the ticket, and writes the work off, when a table is freed unbilled', async () => {
-    const order = await customerOrder(h, 'V1', [{ productCode: 'BEV001', quantity: 2 }], 'ghost-round-2');
+    const order = await customerOrder(
+      h,
+      'V1',
+      [{ productCode: 'BEV001', quantity: 2 }],
+      'ghost-round-2',
+    );
     const freedSession = order.data.sessionId;
 
     expect(await findTicket(h, freedSession)).toBeTruthy();
@@ -237,7 +259,12 @@ describe('a closed table leaves nothing on the board', () => {
   });
 
   it('stops nagging the floor about a freed table that was sitting ready', async () => {
-    const order = await customerOrder(h, 'R4', [{ productCode: 'BEV001', quantity: 1 }], 'ghost-round-3');
+    const order = await customerOrder(
+      h,
+      'R4',
+      [{ productCode: 'BEV001', quantity: 1 }],
+      'ghost-round-3',
+    );
     const nagSession = order.data.sessionId;
 
     const ticket = await findTicket(h, nagSession);

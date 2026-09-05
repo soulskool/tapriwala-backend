@@ -29,4 +29,9 @@ export const confirmExportValidation: ValidationChain[] = [
 export const listExportsValidation: ValidationChain[] = [
   query('status').optional().isIn(EXPORT_STATUS_VALUES).withMessage('Unknown export status'),
   query('sessionId').optional().isMongoId().withMessage('sessionId must be a valid id'),
+  query('tableCode')
+    .optional()
+    .trim()
+    .isLength({ min: 1, max: 12 })
+    .withMessage('tableCode must be 1-12 characters'),
 ];

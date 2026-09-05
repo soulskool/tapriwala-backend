@@ -35,7 +35,9 @@ export const createUserValidation: ValidationChain[] = [
     .matches(/^\d{10}$/)
     .withMessage('Phone must be a 10 digit number'),
 
-  body('role').isIn(ROLE_VALUES).withMessage(`role must be one of: ${ROLE_VALUES.join(', ')}`),
+  body('role')
+    .isIn(ROLE_VALUES)
+    .withMessage(`role must be one of: ${ROLE_VALUES.join(', ')}`),
 
   body('pin')
     .trim()
@@ -47,13 +49,20 @@ export const createUserValidation: ValidationChain[] = [
 
 /** PATCH /admin/users/:id — every field optional, but at least one must change. */
 export const updateUserValidation: ValidationChain[] = [
-  body('name').optional().trim().isLength({ min: 2, max: 80 }).withMessage('Name must be 2–80 characters'),
+  body('name')
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 80 })
+    .withMessage('Name must be 2–80 characters'),
   body('phone')
     .optional()
     .trim()
     .matches(/^\d{10}$/)
     .withMessage('Phone must be a 10 digit number'),
-  body('role').optional().isIn(ROLE_VALUES).withMessage(`role must be one of: ${ROLE_VALUES.join(', ')}`),
+  body('role')
+    .optional()
+    .isIn(ROLE_VALUES)
+    .withMessage(`role must be one of: ${ROLE_VALUES.join(', ')}`),
   body('pin')
     .optional()
     .trim()

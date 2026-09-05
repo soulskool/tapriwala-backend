@@ -55,11 +55,7 @@ export const updateItemStatus = asyncHandler(async (req, res) => {
     ip: req.ip ?? null,
   });
 
-  return sendSuccess(
-    res,
-    { round, item },
-    `${item.displayName} marked ${item.status}`,
-  );
+  return sendSuccess(res, { round, item }, `${item.displayName} marked ${item.status}`);
 });
 
 /** PATCH /rounds/:roundId/status — apply one status to the whole ticket. */

@@ -37,7 +37,12 @@ router.patch(
 );
 
 /** Menu master data is admin-only. */
-router.post('/', authorize(ROLES.ADMIN), validate(createProductValidation), productController.create);
+router.post(
+  '/',
+  authorize(ROLES.ADMIN),
+  validate(createProductValidation),
+  productController.create,
+);
 
 router.post(
   '/bulk',

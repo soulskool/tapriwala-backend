@@ -173,6 +173,7 @@ orderRoundSchema.index({ sessionId: 1, placedAt: 1 });
 orderRoundSchema.index({ kotId: 1 });
 
 export const OrderRound: Model<IOrderRound> =
-  (mongoose.models.OrderRound as Model<IOrderRound>) || model<IOrderRound>('OrderRound', orderRoundSchema);
+  (mongoose.models.OrderRound as Model<IOrderRound>) ||
+  model<IOrderRound>('OrderRound', orderRoundSchema);
 
 export default OrderRound;

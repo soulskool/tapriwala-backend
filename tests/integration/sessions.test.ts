@@ -130,7 +130,12 @@ describe('manager review hold', () => {
   let sessionId = '';
 
   it('is raised automatically when an item is cancelled after being prepared', async () => {
-    const order = await customerOrder(h, 'R1', [{ productCode: 'SNK001', quantity: 1 }], 'review-1');
+    const order = await customerOrder(
+      h,
+      'R1',
+      [{ productCode: 'SNK001', quantity: 1 }],
+      'review-1',
+    );
     sessionId = order.data.sessionId;
 
     const ticket = await findTicket(h, sessionId);
@@ -221,7 +226,12 @@ describe('closing', () => {
   });
 
   it('gives the next customer a brand-new session on the same table', async () => {
-    const fresh = await customerOrder(h, 'M1', [{ productCode: 'BEV001', quantity: 1 }], 'reuse-1-order');
+    const fresh = await customerOrder(
+      h,
+      'M1',
+      [{ productCode: 'BEV001', quantity: 1 }],
+      'reuse-1-order',
+    );
 
     expect(fresh.data.roundNumber).toBe(1);
     expect((await tile(h, 'M1')).status).toBe('order_pending');

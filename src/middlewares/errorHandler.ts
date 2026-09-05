@@ -112,7 +112,9 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
 export const notFoundHandler: RequestHandler = (req, res) => {
   res
     .status(HTTP_STATUS.NOT_FOUND)
-    .json(ApiResponse.error(`Route ${req.method} ${req.originalUrl} not found`, ERROR_CODES.NOT_FOUND));
+    .json(
+      ApiResponse.error(`Route ${req.method} ${req.originalUrl} not found`, ERROR_CODES.NOT_FOUND),
+    );
 };
 
 export default errorHandler;

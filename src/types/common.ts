@@ -96,6 +96,17 @@ export interface KdsTicket {
   placedAt: Date;
   elapsedMinutes: number;
   status: string;
+  /**
+   * What this round is worth, cancelled items excluded.
+   *
+   * The KDS is not a billing screen and must never become one — but a cook
+   * being asked "is the 420 one ready?" over the pass needs the number on the
+   * card to answer it. Derived from the same snapshotted item prices the bill
+   * uses, so the two can never disagree.
+   */
+  subtotal: number;
+  tax: number;
+  total: number;
   items: {
     itemId: string;
     productCode: string;
@@ -105,5 +116,8 @@ export interface KdsTicket {
     kitchenStation: KitchenStation;
     status: ItemStatus;
     unavailable: boolean;
+    /** Snapshotted at order time — never re-read from the menu. */
+    unitPrice: number;
+    lineTotal: number;
   }[];
 }

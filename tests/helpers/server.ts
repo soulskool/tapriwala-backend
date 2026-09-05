@@ -122,9 +122,7 @@ export async function seedFixtures(): Promise<void> {
     { code: 'L5', zone: TABLE_ZONES.LEFT, displayOrder: 5 },
     { code: 'V1', zone: TABLE_ZONES.VERANDA, displayOrder: 1 },
   ];
-  await TableMaster.insertMany(
-    tables.map((table) => ({ ...table, seatingCapacity: 4 })),
-  );
+  await TableMaster.insertMany(tables.map((table) => ({ ...table, seatingCapacity: 4 })));
 
   await ProductMaster.insertMany([
     {
