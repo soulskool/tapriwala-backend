@@ -8,6 +8,7 @@ import {
   confirmExportValidation,
   dateRangeQuery,
   exportBillValidation,
+  exportsXlsxValidation,
   listExportsValidation,
   objectIdParam,
   paginationQuery,
@@ -33,6 +34,24 @@ router.get(
   canReadBills,
   validate([...listExportsValidation, ...paginationQuery, ...dateRangeQuery]),
   billingController.listExports,
+);
+
+/*
+ * Excel export of the bill history.
+ *
+ * Registered BEFORE `/exports/:id`, or Express matches this path as an export
+ * id of "xlsx" and the ObjectId validator rejects it with a 400.
+ *
+ * Billing and admin only, unlike the list above. A waiter needs "what was M2
+ * charged?" on the floor; a spreadsheet of every bill in a date range with
+ * what is still unpaid is a management question, so it takes the same rights
+ * as generating a bill.
+ */
+router.get(
+  '/exports/xlsx',
+  authorize(ROLES.BILLING),
+  validate([...exportsXlsxValidation, ...dateRangeQuery]),
+  billingController.downloadExportsXlsx,
 );
 
 router.get(

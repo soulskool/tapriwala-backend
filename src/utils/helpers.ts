@@ -105,6 +105,26 @@ export function queryNumber(value: unknown): number | undefined {
   return undefined;
 }
 
+/**
+ * Reads an optional boolean from a query string (validators may already have
+ * cast it).
+ *
+ * The same defensive shape as `queryDate` and for the same reason: a chain's
+ * `.toBoolean()` cannot be relied on to have written back by the time a
+ * controller reads it, so the raw string has to be handled too. Anything that
+ * is neither true-ish nor false-ish returns undefined rather than guessing —
+ * an unparseable filter must not silently become `false` and hide rows.
+ */
+export function queryBoolean(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalised = value.trim().toLowerCase();
+    if (normalised === 'true' || normalised === '1') return true;
+    if (normalised === 'false' || normalised === '0') return false;
+  }
+  return undefined;
+}
+
 /** Reads an optional Date from a query string (validators may already have cast it). */
 export function queryDate(value: unknown): Date | undefined {
   if (value instanceof Date) return value;

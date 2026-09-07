@@ -4,7 +4,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { sendCreated, sendPaginated, sendSuccess } from '../utils/ApiResponse.js';
 import { getActor } from '../utils/actor.js';
 import { getPagination } from '../utils/pagination.js';
-import { queryDate } from '../utils/helpers.js';
+import { queryBoolean, queryDate } from '../utils/helpers.js';
 
 /** GET /billing/queue — tables waiting to be billed, longest first. */
 export const queue = asyncHandler(async (_req, res) => {
@@ -91,6 +91,8 @@ export const confirmExport = asyncHandler(async (req, res) => {
 export const listExports = asyncHandler(async (req, res) => {
   const { page, limit, skip } = getPagination(req);
 
+  const settled = queryBoolean(req.query.settled);
+
   const { items, total } = await billingService.listExports(
     {
       status: req.query.status as ExportStatus | undefined,
@@ -98,12 +100,44 @@ export const listExports = asyncHandler(async (req, res) => {
       tableCode: req.query.tableCode as string | undefined,
       from: queryDate(req.query.from),
       to: queryDate(req.query.to),
+      // `.toBoolean()` in the validator means this is already a real boolean.
+      ...(typeof settled === 'boolean' ? { settled } : {}),
     },
     skip,
     limit,
   );
 
   return sendPaginated(res, items, page, limit, total);
+});
+
+/**
+ * GET /billing/exports/xlsx — every matching bill as an Excel workbook.
+ *
+ * Registered before `/exports/:id` in the router, or "xlsx" would be read as
+ * an export id and rejected by the ObjectId validator.
+ *
+ * Unpaginated by design: a financial export that quietly stopped at page one
+ * would look complete and be wrong. The service caps the rows and writes a
+ * warning onto the sheet when it does.
+ */
+export const downloadExportsXlsx = asyncHandler(async (req, res) => {
+  const settled = queryBoolean(req.query.settled);
+
+  const { buffer } = await billingService.buildExportsWorkbook({
+    status: req.query.status as ExportStatus | undefined,
+    tableCode: req.query.tableCode as string | undefined,
+    from: queryDate(req.query.from),
+    to: queryDate(req.query.to),
+    ...(settled !== undefined ? { settled } : {}),
+  });
+
+  const stamp = new Date().toISOString().slice(0, 10);
+  res.setHeader(
+    'Content-Type',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  );
+  res.setHeader('Content-Disposition', `attachment; filename="bills-${stamp}.xlsx"`);
+  return res.send(buffer);
 });
 
 /** GET /billing/exports/:id */

@@ -1,3 +1,4 @@
+import ExcelJS from 'exceljs';
 import { Types } from 'mongoose';
 
 import {
@@ -18,6 +19,7 @@ import {
   OrderRound,
   TableSession,
   type BillingExportDocument,
+  type IBillingExport,
   type IBillingExportLine,
 } from '../models/index.js';
 import type { ConsolidatedBill, ConsolidatedLine } from '../types/common.js';
@@ -420,6 +422,16 @@ export interface ListExportsFilter {
   tableCode?: string;
   from?: Date;
   to?: Date;
+  /**
+   * Paid or not, as one flag.
+   *
+   * Deliberately not the same axis as `status`. "Settled" means the counter
+   * took the money — `exportStatus === 'confirmed'`. "Unsettled" is every
+   * other status at once (sent, pending, failed), which no single `status`
+   * value can express, and it is the question an owner actually asks at the
+   * end of a shift: what did we bill and never collect?
+   */
+  settled?: boolean;
 }
 
 export async function listExports(
@@ -428,7 +440,18 @@ export async function listExports(
   limit: number,
 ): Promise<{ items: unknown[]; total: number }> {
   const query: Record<string, unknown> = {};
-  if (filter.status) query.exportStatus = filter.status;
+
+  // `status` and `settled` both constrain exportStatus, so only one may apply.
+  // An explicit status is the more specific request and wins; without one,
+  // `settled` splits confirmed from everything else.
+  if (filter.status) {
+    query.exportStatus = filter.status;
+  } else if (filter.settled !== undefined) {
+    query.exportStatus = filter.settled
+      ? EXPORT_STATUS.CONFIRMED
+      : { $ne: EXPORT_STATUS.CONFIRMED };
+  }
+
   if (filter.sessionId) query.sessionId = new Types.ObjectId(filter.sessionId);
   // Stored uppercase by the schema, so match uppercase regardless of input.
   if (filter.tableCode) query.tableCode = filter.tableCode.trim().toUpperCase();
@@ -451,4 +474,181 @@ export async function getExportOrThrow(exportId: string): Promise<BillingExportD
   const record = await BillingExport.findById(exportId);
   if (!record) throw ApiError.notFound('Billing export not found');
   return record;
+}
+
+// ─── Excel export ────────────────────────────────────────────────────────────
+
+/**
+ * Every bill in a range, as a real .xlsx workbook.
+ *
+ * Two sheets, because the two questions an owner asks need different shapes:
+ * "Bills" is one row per bill and answers what was taken and what is still
+ * owed; "Line items" is one row per product line and is what you point a pivot
+ * table at to find out what actually sells.
+ *
+ * Unpaginated on purpose. A paginated export would silently hand over the
+ * first 25 rows of a month and look complete, which is the one failure mode a
+ * financial export must not have. `EXPORT_ROW_CAP` bounds it instead, and the
+ * caller is told when the cap was hit rather than being left to guess.
+ */
+export const EXPORT_ROW_CAP = 5000;
+
+/** Reads as a date in Excel, not as text — sorting and filtering depend on it. */
+function excelDate(value: Date | null | undefined): Date | null {
+  return value ? new Date(value) : null;
+}
+
+/** What the counter sees on screen, so paper, screen and sheet agree. */
+function settlementLabel(status: ExportStatus): string {
+  if (status === EXPORT_STATUS.CONFIRMED) return 'Paid';
+  if (status === EXPORT_STATUS.FAILED) return 'Failed';
+  return 'Not settled';
+}
+
+export interface BillsWorkbook {
+  buffer: Buffer;
+  /** Bills written to the sheet. */
+  rowCount: number;
+  /** True when more bills matched than the cap allowed — narrow the range. */
+  truncated: boolean;
+}
+
+export async function buildExportsWorkbook(filter: ListExportsFilter): Promise<BillsWorkbook> {
+  const { items, total } = await listExports(filter, 0, EXPORT_ROW_CAP);
+  const bills = items as unknown as IBillingExport[];
+
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'Tapriwala by Treatmeets';
+  // Fixed, not `new Date()`: a deterministic workbook means two exports of the
+  // same range are byte-identical and diffable.
+  workbook.created = filter.to ?? filter.from ?? new Date(0);
+
+  const money = '#,##0.00';
+  const stamp = 'dd-mmm-yyyy hh:mm';
+
+  const summary = workbook.addWorksheet('Bills');
+  summary.columns = [
+    { header: 'Bill No', key: 'billNumber', width: 10 },
+    { header: 'Generated', key: 'generatedAt', width: 20, style: { numFmt: stamp } },
+    { header: 'Table', key: 'tableCode', width: 8 },
+    { header: 'Order type', key: 'orderType', width: 16 },
+    { header: 'Items', key: 'itemCount', width: 8 },
+    { header: 'Subtotal', key: 'subtotal', width: 12, style: { numFmt: money } },
+    { header: 'Tax', key: 'tax', width: 10, style: { numFmt: money } },
+    { header: 'Total', key: 'total', width: 12, style: { numFmt: money } },
+    { header: 'Settlement', key: 'settlement', width: 13 },
+    { header: 'Paid at', key: 'confirmedAt', width: 20, style: { numFmt: stamp } },
+    { header: 'Billed by', key: 'generatedBy', width: 18 },
+    { header: 'Note', key: 'note', width: 30 },
+  ];
+
+  const lines = workbook.addWorksheet('Line items');
+  lines.columns = [
+    { header: 'Bill No', key: 'billNumber', width: 10 },
+    { header: 'Generated', key: 'generatedAt', width: 20, style: { numFmt: stamp } },
+    { header: 'Table', key: 'tableCode', width: 8 },
+    { header: 'Code', key: 'productCode', width: 12 },
+    { header: 'Item', key: 'posName', width: 28 },
+    { header: 'Order type', key: 'orderType', width: 12 },
+    { header: 'Qty', key: 'quantity', width: 7 },
+    { header: 'Rate', key: 'unitPrice', width: 10, style: { numFmt: money } },
+    { header: 'Tax %', key: 'taxPercent', width: 8 },
+    { header: 'Amount', key: 'amount', width: 12, style: { numFmt: money } },
+    { header: 'Tax amount', key: 'taxAmount', width: 12, style: { numFmt: money } },
+    { header: 'Settlement', key: 'settlement', width: 13 },
+  ];
+
+  for (const sheet of [summary, lines]) {
+    sheet.getRow(1).font = { bold: true };
+    // The header stays put while an owner scrolls a month of bills.
+    sheet.views = [{ state: 'frozen', ySplit: 1 }];
+    sheet.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: 1, column: sheet.columns.length },
+    };
+  }
+
+  for (const bill of bills) {
+    const settlement = settlementLabel(bill.exportStatus);
+    const lineItems = bill.lineItems ?? [];
+
+    // Distinct types on this bill, dining first — the same summary the receipt
+    // prints, rebuilt here because a stored bill has no `orderTypes` field.
+    const types = ORDER_TYPE_VALUES.filter((type) =>
+      lineItems.some((line) => (line.orderType ?? ORDER_TYPE.DINING) === type),
+    );
+
+    summary.addRow({
+      billNumber: bill.billNumber,
+      generatedAt: excelDate(bill.generatedAt),
+      tableCode: bill.tableCode,
+      orderType: types.join(' + ') || ORDER_TYPE.DINING,
+      itemCount: lineItems.reduce((sum, line) => sum + line.quantity, 0),
+      subtotal: bill.subtotal,
+      tax: bill.tax,
+      total: bill.total,
+      settlement,
+      confirmedAt: excelDate(bill.confirmedAt),
+      generatedBy: bill.generatedBy?.name ?? '',
+      note: bill.note ?? '',
+    });
+
+    for (const line of lineItems) {
+      lines.addRow({
+        billNumber: bill.billNumber,
+        generatedAt: excelDate(bill.generatedAt),
+        tableCode: bill.tableCode,
+        productCode: line.productCode,
+        posName: line.posName,
+        orderType: line.orderType ?? ORDER_TYPE.DINING,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+        taxPercent: line.taxPercent,
+        amount: line.amount,
+        taxAmount: line.taxAmount,
+        settlement,
+      });
+    }
+  }
+
+  // Totals row, so the number an owner needs is on the sheet rather than
+  // something they have to select a column to find.
+  if (bills.length > 0) {
+    const totalRow = summary.addRow({
+      tableCode: 'TOTAL',
+      itemCount: bills.reduce(
+        (n, b) => n + (b.lineItems ?? []).reduce((m, l) => m + l.quantity, 0),
+        0,
+      ),
+      subtotal: round2(bills.reduce((n, b) => n + b.subtotal, 0)),
+      tax: round2(bills.reduce((n, b) => n + b.tax, 0)),
+      total: round2(bills.reduce((n, b) => n + b.total, 0)),
+    });
+    totalRow.font = { bold: true };
+  }
+
+  /*
+   * A capped export says so on the sheet itself.
+   *
+   * Not in a response header: the frontend is a different origin, so a custom
+   * header needs `Access-Control-Expose-Headers` to survive, and a warning
+   * that can be dropped in transit is worse than no warning at all. On the
+   * sheet it travels with the file — including when it is forwarded to an
+   * accountant who never saw the screen it came from.
+   */
+  if (total > bills.length) {
+    const warning = summary.addRow({
+      billNumber: 'INCOMPLETE',
+      tableCode: `Showing ${bills.length} of ${total} bills. Narrow the date range and export again.`,
+    });
+    warning.font = { bold: true };
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer();
+
+  return {
+    buffer: Buffer.from(buffer),
+    rowCount: bills.length,
+    truncated: total > bills.length,
+  };
 }
