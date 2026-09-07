@@ -27,7 +27,7 @@ async function bootstrap(): Promise<void> {
   initSocketServer(server);
 
   server.listen(env.port, () => {
-    logger.info(`ACD Cafe API listening on port ${env.port} [${env.nodeEnv}]`);
+    logger.info(`Tapriwala by Treatmeets API listening on port ${env.port} [${env.nodeEnv}]`);
     logger.info(`REST base: http://localhost:${env.port}${env.apiPrefix}`);
   });
 

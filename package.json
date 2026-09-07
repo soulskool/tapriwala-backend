@@ -1,7 +1,7 @@
 {
   "name": "acd-cafe-backend",
   "version": "1.0.0",
-  "description": "ACD Cafe - Real-Time Ordering, KDS & Billing System (Phase 1 backend)",
+  "description": "Tapriwala by Treatmeets - Real-Time Ordering, KDS & Billing System (Phase 1 backend)",
   "type": "module",
   "main": "dist/server.js",
   "engines": {

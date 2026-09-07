@@ -4,6 +4,7 @@ import type {
   ExportMethod,
   ItemStatus,
   KitchenStation,
+  OrderType,
   Role,
   SessionStatus,
 } from '../config/constants.js';
@@ -33,6 +34,11 @@ export interface ConsolidatedLine {
   amount: number;
   taxAmount: number;
   kitchenStation: KitchenStation;
+  /**
+   * Dining or parcel. Part of the grouping key, so a table that ate three teas
+   * and carried one out bills as two lines rather than one that is half a lie.
+   */
+  orderType: OrderType;
   /** Round numbers this quantity came from, for staff drill-down. */
   rounds: number[];
 }
@@ -50,6 +56,12 @@ export interface ConsolidatedBill {
   total: number;
   roundCount: number;
   itemCount: number;
+  /**
+   * Every order type present on this bill, dining first. One entry is the
+   * normal case and prints as a single heading; two means the receipt has to
+   * say so per line rather than pick one and be wrong about half the items.
+   */
+  orderTypes: OrderType[];
   /** True when items were cancelled after preparation started — needs a manager look. */
   requiresReview: boolean;
 }
@@ -93,6 +105,10 @@ export interface KdsTicket {
   roundNumber: number;
   isAddOn: boolean;
   source: string;
+  /** Dining or parcel — the heading the KOT prints and the badge on the card. */
+  orderType: OrderType;
+  /** Who sent it. Printed on the KOT as the server name. */
+  placedByName: string;
   placedAt: Date;
   elapsedMinutes: number;
   status: string;

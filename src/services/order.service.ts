@@ -7,6 +7,7 @@ import {
   ITEM_STATUS,
   ITEM_STATUS_TRANSITIONS,
   KITCHEN_SETTABLE_STATUSES,
+  ORDER_TYPE,
   ROLES,
   ROUND_STATUS,
   SESSION_STATUS,
@@ -14,6 +15,7 @@ import {
   type ItemStatus,
   type KitchenStation,
   type OrderSource,
+  type OrderType,
 } from '../config/constants.js';
 import { env } from '../config/env.js';
 import {
@@ -49,6 +51,12 @@ export interface PlaceRoundInput {
   items: OrderItemInput[];
   actor: Actor;
   source: OrderSource;
+  /**
+   * Omitted means dining. The public (QR) controller never passes it, which is
+   * what makes "a guest cannot mark their own order a parcel" a server-side
+   * fact rather than a hidden button on the phone.
+   */
+  orderType?: OrderType;
   idempotencyKey?: string;
   ip?: string | null;
 }
@@ -196,6 +204,7 @@ export async function placeRound(
       roundNumber,
       kotId,
       source: input.source,
+      orderType: input.orderType ?? ORDER_TYPE.DINING,
       placedBy: actorSnapshot(input.actor),
       items,
       status: ROUND_STATUS.PENDING,
@@ -229,6 +238,7 @@ export async function placeRound(
     after: {
       roundNumber,
       kotId,
+      orderType: input.orderType ?? ORDER_TYPE.DINING,
       total: totals.total,
       items: items.map((item) => ({
         productCode: item.productCode,
@@ -253,6 +263,7 @@ export async function placeRound(
 
   logger.info(`KOT ${kotId} placed on ${session.tableCode} (round ${roundNumber})`, {
     source: input.source,
+    orderType: input.orderType ?? ORDER_TYPE.DINING,
     itemCount: items.length,
     total: totals.total,
   });
@@ -486,6 +497,8 @@ export function toKdsTicket(
     kotId: string;
     roundNumber: number;
     source: string;
+    orderType?: OrderType;
+    placedBy?: { name?: string };
     placedAt: Date;
     status: string;
     items: IOrderItem[];
@@ -504,6 +517,11 @@ export function toKdsTicket(
     roundNumber: doc.roundNumber,
     isAddOn: doc.roundNumber > 1,
     source: doc.source,
+    // Coalesced rather than trusted: the KDS reads through `.lean()`, which
+    // does not apply the schema default, and rounds placed before this field
+    // existed have no value stored at all.
+    orderType: doc.orderType ?? ORDER_TYPE.DINING,
+    placedByName: doc.placedBy?.name ?? '',
     placedAt: doc.placedAt,
     elapsedMinutes: minutesSince(doc.placedAt),
     status: doc.status,

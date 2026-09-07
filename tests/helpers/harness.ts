@@ -63,16 +63,26 @@ export function customerOrder(
   });
 }
 
-/** Places a staff order on an existing session. */
+/**
+ * Places a staff order on an existing session.
+ *
+ * `orderType` is omitted by default so every existing caller keeps exercising
+ * the "absent means dining" path.
+ */
 export function waiterOrder(
   h: Harness,
   sessionId: string,
   items: OrderLine[],
   idempotencyKey?: string,
+  orderType?: 'dining' | 'parcel',
 ): Promise<ApiResult> {
   return h.api('POST', `/sessions/${sessionId}/rounds`, {
     token: h.tokens.waiter,
-    body: { items, ...(idempotencyKey ? { idempotencyKey } : {}) },
+    body: {
+      items,
+      ...(idempotencyKey ? { idempotencyKey } : {}),
+      ...(orderType ? { orderType } : {}),
+    },
   });
 }
 

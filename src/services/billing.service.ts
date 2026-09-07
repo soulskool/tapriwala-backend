@@ -6,9 +6,12 @@ import {
   EXPORT_METHOD,
   EXPORT_STATUS,
   ITEM_STATUS,
+  ORDER_TYPE,
+  ORDER_TYPE_VALUES,
   SESSION_STATUS,
   type ExportMethod,
   type ExportStatus,
+  type OrderType,
 } from '../config/constants.js';
 import {
   BillingExport,
@@ -45,6 +48,11 @@ import { nextBillNumber } from './counter.service.js';
  *
  * Grouping is by code *and* price, so a round placed before a price change
  * bills at its own snapshotted rate instead of being silently repriced.
+ *
+ * It is also by order type. A session that drank three teas here and carried a
+ * fourth out is two lines, not one — merging them would print a single "4 TEA"
+ * under a heading that is wrong about a quarter of it. A session of one type
+ * (almost all of them) groups exactly as it did before this existed.
  */
 export async function consolidate(sessionId: string): Promise<ConsolidatedBill> {
   const session = await sessionService.getByIdOrThrow(sessionId);
@@ -56,10 +64,14 @@ export async function consolidate(sessionId: string): Promise<ConsolidatedBill> 
   let requiresReview = session.heldForReview;
 
   for (const round of rounds) {
+    // `.lean()` skips the schema default, and rounds older than this field have
+    // nothing stored — both mean dining, which is what they were.
+    const orderType: OrderType = round.orderType ?? ORDER_TYPE.DINING;
+
     for (const item of round.items) {
       const isCancelled = item.status === ITEM_STATUS.CANCELLED;
       const bucket = isCancelled ? cancelled : billable;
-      const key = `${item.productCode}::${item.unitPrice}::${item.taxPercent}`;
+      const key = `${item.productCode}::${item.unitPrice}::${item.taxPercent}::${orderType}`;
 
       if (isCancelled && item.cancelledAfterPrep) requiresReview = true;
       if (!isCancelled) itemCount += item.quantity;
@@ -84,14 +96,26 @@ export async function consolidate(sessionId: string): Promise<ConsolidatedBill> 
         amount,
         taxAmount: round2((amount * item.taxPercent) / 100),
         kitchenStation: item.kitchenStation,
+        orderType,
         rounds: [round.roundNumber],
       });
     }
   }
 
-  const lines = Array.from(billable.values()).sort((a, b) =>
-    a.productCode.localeCompare(b.productCode),
+  // Dining block first, then parcel, each sorted by code. On a single-type
+  // bill this is the old ordering exactly; on a mixed one it keeps the two
+  // kinds from interleaving, which is what makes the paper readable.
+  const lines = Array.from(billable.values()).sort(
+    (a, b) =>
+      ORDER_TYPE_VALUES.indexOf(a.orderType) - ORDER_TYPE_VALUES.indexOf(b.orderType) ||
+      a.productCode.localeCompare(b.productCode),
   );
+
+  // Only the types actually billed, in ORDER_TYPE_VALUES order. Cancelled lines
+  // are excluded deliberately — a parcel that was cancelled must not make the
+  // heading claim the guest is carrying something out.
+  const billedTypes = new Set(lines.map((line) => line.orderType));
+  const orderTypes = ORDER_TYPE_VALUES.filter((type) => billedTypes.has(type));
 
   const subtotal = round2(lines.reduce((sum, line) => sum + line.amount, 0));
   const tax = round2(lines.reduce((sum, line) => sum + line.taxAmount, 0));
@@ -109,6 +133,7 @@ export async function consolidate(sessionId: string): Promise<ConsolidatedBill> 
     total: round2(subtotal + tax),
     roundCount: rounds.length,
     itemCount,
+    orderTypes,
     requiresReview,
   };
 }
@@ -183,9 +208,25 @@ export function toCsv(bill: ConsolidatedBill): string {
     return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
   };
 
-  const header = ['ProductCode', 'PosName', 'Quantity', 'UnitPrice', 'TaxPercent', 'Amount'];
+  const header = [
+    'ProductCode',
+    'PosName',
+    'OrderType',
+    'Quantity',
+    'UnitPrice',
+    'TaxPercent',
+    'Amount',
+  ];
   const rows = bill.lines.map((line) =>
-    [line.productCode, line.posName, line.quantity, line.unitPrice, line.taxPercent, line.amount]
+    [
+      line.productCode,
+      line.posName,
+      line.orderType,
+      line.quantity,
+      line.unitPrice,
+      line.taxPercent,
+      line.amount,
+    ]
       .map(escape)
       .join(','),
   );
@@ -232,6 +273,10 @@ export async function exportBill(input: ExportInput): Promise<{
   const lineItems: IBillingExportLine[] = bill.lines.map((line) => ({
     productCode: line.productCode,
     posName: line.posName,
+    // Frozen with the rest of the line. A reprint months later has to say
+    // which of these went out of the door, and the rounds it came from may
+    // well have been closed and archived by then.
+    orderType: line.orderType,
     quantity: line.quantity,
     unitPrice: line.unitPrice,
     taxPercent: line.taxPercent,

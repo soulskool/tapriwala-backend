@@ -5,11 +5,14 @@ import {
   ITEM_STATUS_VALUES,
   KITCHEN_STATION_VALUES,
   ORDER_SOURCE_VALUES,
+  ORDER_TYPE,
+  ORDER_TYPE_VALUES,
   ROUND_STATUS,
   ROUND_STATUS_VALUES,
   type ItemStatus,
   type KitchenStation,
   type OrderSource,
+  type OrderType,
   type RoundStatus,
 } from '../config/constants.js';
 
@@ -55,6 +58,8 @@ export interface IOrderRound {
   roundNumber: number;
   kotId: string;
   source: OrderSource;
+  /** Eaten here or carried out. Defaults to dining; see ORDER_TYPE. */
+  orderType: OrderType;
   placedBy: {
     role: string;
     userId: Types.ObjectId | null;
@@ -122,6 +127,13 @@ const orderRoundSchema = new Schema<IOrderRound>(
     roundNumber: { type: Number, required: true, min: 1 },
     kotId: { type: String, required: true, trim: true },
     source: { type: String, required: true, enum: ORDER_SOURCE_VALUES },
+    /*
+     * Not `required`, and defaulted: every round placed before this field
+     * existed reads back as dining, which is what those rounds actually were.
+     * Read paths that use `.lean()` skip schema defaults, so the mappers
+     * coalesce as well -- the default here is for writes, not for reads.
+     */
+    orderType: { type: String, enum: ORDER_TYPE_VALUES, default: ORDER_TYPE.DINING },
     placedBy: {
       type: new Schema(
         {

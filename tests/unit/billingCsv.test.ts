@@ -18,6 +18,7 @@ const line = (overrides: Partial<ConsolidatedLine> = {}): ConsolidatedLine => ({
   amount: 60,
   taxAmount: 3,
   kitchenStation: 'Beverage',
+  orderType: 'dining',
   rounds: [1],
   ...overrides,
 });
@@ -35,19 +36,22 @@ const bill = (lines: ConsolidatedLine[]): ConsolidatedBill => ({
   total: 0,
   roundCount: 1,
   itemCount: 1,
+  orderTypes: ['dining'],
   requiresReview: false,
 });
 
 describe('toCsv', () => {
   it('writes the header the POS importer expects', () => {
     const csv = toCsv(bill([line()]));
-    expect(csv.split('\n')[0]).toBe('ProductCode,PosName,Quantity,UnitPrice,TaxPercent,Amount');
+    expect(csv.split('\n')[0]).toBe(
+      'ProductCode,PosName,OrderType,Quantity,UnitPrice,TaxPercent,Amount',
+    );
   });
 
   it('writes one row per consolidated line', () => {
     const csv = toCsv(bill([line(), line({ productCode: 'SNK001', posName: 'VEG SANDWICH' })]));
     expect(csv.split('\n')).toHaveLength(3);
-    expect(csv).toContain('BEV001,TEA,2,30,5,60');
+    expect(csv).toContain('BEV001,TEA,dining,2,30,5,60');
   });
 
   it('quotes a POS name containing a comma so columns do not shift', () => {
@@ -60,12 +64,19 @@ describe('toCsv', () => {
     expect(csv).toContain('"TEA ""SPECIAL"""');
   });
 
+  it('carries the order type, so a parcel line is distinguishable in the import', () => {
+    const csv = toCsv(bill([line({ orderType: 'parcel' })]));
+    expect(csv).toContain('BEV001,TEA,parcel,2,30,5,60');
+  });
+
   it('quotes a name containing a newline', () => {
     const csv = toCsv(bill([line({ posName: 'TEA\nHOT' })]));
     expect(csv).toContain('"TEA\nHOT"');
   });
 
   it('emits a header-only file for a bill with no lines', () => {
-    expect(toCsv(bill([]))).toBe('ProductCode,PosName,Quantity,UnitPrice,TaxPercent,Amount');
+    expect(toCsv(bill([]))).toBe(
+      'ProductCode,PosName,OrderType,Quantity,UnitPrice,TaxPercent,Amount',
+    );
   });
 });

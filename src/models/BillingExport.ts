@@ -4,8 +4,11 @@ import {
   EXPORT_METHOD_VALUES,
   EXPORT_STATUS,
   EXPORT_STATUS_VALUES,
+  ORDER_TYPE,
+  ORDER_TYPE_VALUES,
   type ExportMethod,
   type ExportStatus,
+  type OrderType,
 } from '../config/constants.js';
 
 /**
@@ -19,6 +22,8 @@ import {
 export interface IBillingExportLine {
   productCode: string;
   posName: string;
+  /** Dining or parcel, frozen with the price. See ORDER_TYPE. */
+  orderType: OrderType;
   quantity: number;
   unitPrice: number;
   taxPercent: number;
@@ -59,6 +64,9 @@ const lineItemSchema = new Schema<IBillingExportLine>(
   {
     productCode: { type: String, required: true, uppercase: true, trim: true },
     posName: { type: String, required: true, trim: true },
+    // Defaulted, not required: bills saved before this field existed were all
+    // dining, and a reprint of one must still render rather than throw.
+    orderType: { type: String, enum: ORDER_TYPE_VALUES, default: ORDER_TYPE.DINING },
     quantity: { type: Number, required: true, min: 1 },
     unitPrice: { type: Number, required: true, min: 0 },
     taxPercent: { type: Number, required: true, min: 0, max: 100 },

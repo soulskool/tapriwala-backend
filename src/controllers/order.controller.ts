@@ -1,4 +1,4 @@
-import { HTTP_STATUS, ORDER_SOURCE, type ItemStatus } from '../config/constants.js';
+import { HTTP_STATUS, ORDER_SOURCE, type ItemStatus, type OrderType } from '../config/constants.js';
 import * as orderService from '../services/order.service.js';
 import type { OrderItemInput } from '../types/common.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -7,6 +7,8 @@ import { getActor } from '../utils/actor.js';
 
 interface PlaceOrderBody {
   items: OrderItemInput[];
+  /** Dining or parcel. Absent means dining — see ORDER_TYPE. */
+  orderType?: OrderType;
   idempotencyKey?: string;
 }
 
@@ -17,13 +19,14 @@ interface PlaceOrderBody {
  * original round, so a retry after a dropped connection is safe.
  */
 export const placeRound = asyncHandler(async (req, res) => {
-  const { items, idempotencyKey } = req.body as PlaceOrderBody;
+  const { items, orderType, idempotencyKey } = req.body as PlaceOrderBody;
 
   const { round, created } = await orderService.placeRound({
     sessionId: req.params.id as string,
     items,
     actor: getActor(req),
     source: ORDER_SOURCE.WAITER,
+    ...(orderType !== undefined ? { orderType } : {}),
     ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
     ip: req.ip ?? null,
   });

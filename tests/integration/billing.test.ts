@@ -119,7 +119,9 @@ describe('consolidation', () => {
     const csv = await response.text();
 
     expect(csv.startsWith('ProductCode,PosName')).toBe(true);
-    expect(csv).toContain('SNK001,VEG SANDWICH,2');
+    // The order type sits between the name and the quantity — a POS importer
+    // reading by column position needs the header, which is asserted above.
+    expect(csv).toContain('SNK001,VEG SANDWICH,dining,2');
   });
 });
 

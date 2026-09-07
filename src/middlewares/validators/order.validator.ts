@@ -5,6 +5,7 @@ import {
   ITEM_STATUS,
   ITEM_STATUS_VALUES,
   KITCHEN_STATION_VALUES,
+  ORDER_TYPE_VALUES,
 } from '../../config/constants.js';
 
 /**
@@ -37,6 +38,13 @@ export const placeOrderValidation: ValidationChain[] = [
     .withMessage(
       `Special instructions must be at most ${APP_CONSTANTS.MAX_SPECIAL_INSTRUCTIONS_LENGTH} characters`,
     ),
+
+  // Absent means dining. Only the staff route reads it — the public QR
+  // controller ignores the body field entirely, so a guest cannot send one.
+  body('orderType')
+    .optional()
+    .isIn(ORDER_TYPE_VALUES)
+    .withMessage(`orderType must be one of: ${ORDER_TYPE_VALUES.join(', ')}`),
 
   // Client-generated key; the server falls back to a UUID when it is absent.
   body('idempotencyKey')

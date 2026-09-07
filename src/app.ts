@@ -85,7 +85,7 @@ export function createApp(): Express {
 
   app.get('/', (_req, res) => {
     res.json({
-      service: 'ACD Cafe API',
+      service: 'Tapriwala by Treatmeets API',
       status: 'running',
       docs: `${env.apiPrefix}/health`,
     });

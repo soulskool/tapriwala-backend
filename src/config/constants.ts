@@ -124,6 +124,33 @@ export const ORDER_SOURCE = {
 export type OrderSource = (typeof ORDER_SOURCE)[keyof typeof ORDER_SOURCE];
 export const ORDER_SOURCE_VALUES = Object.values(ORDER_SOURCE) as OrderSource[];
 
+/**
+ * Whether a round is eaten at the table or carried out.
+ *
+ * Lives on the round, not the session: one occupancy genuinely mixes the two —
+ * a table drinking chai orders samosas to take home — and the round is already
+ * the unit the KOT and the KDS card are built from, so "this ticket is a
+ * parcel" is a fact the ticket carries rather than one looked up elsewhere.
+ *
+ * `dining` is the default everywhere, and the only value a customer QR order
+ * can ever have: the public controller does not read this field off the
+ * request, so a guest cannot mark their own order a parcel. Staff choose it on
+ * the table screen.
+ */
+export const ORDER_TYPE = {
+  DINING: 'dining',
+  PARCEL: 'parcel',
+} as const;
+
+export type OrderType = (typeof ORDER_TYPE)[keyof typeof ORDER_TYPE];
+export const ORDER_TYPE_VALUES = Object.values(ORDER_TYPE) as OrderType[];
+
+/** What the KOT and the bill print as a heading. */
+export const ORDER_TYPE_LABEL: Record<OrderType, string> = {
+  [ORDER_TYPE.DINING]: 'DINING',
+  [ORDER_TYPE.PARCEL]: 'PARCEL',
+};
+
 export const ITEM_STATUS = {
   PENDING: 'pending',
   ACCEPTED: 'accepted',
