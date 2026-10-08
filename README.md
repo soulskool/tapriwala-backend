@@ -397,6 +397,15 @@ npm run build
 pm2 start ecosystem.config.cjs && pm2 save && pm2 startup
 ```
 
+**`npm ci`, never `npm install` — on the server this is not a preference.**
+`npm install` rewrites `package-lock.json`, so the next `git pull` aborts with
+"Your local changes would be overwritten by merge" over a file nobody edited.
+`npm ci` installs exactly what the lockfile pins and never writes to it. If a
+server has already been left in that state, `git checkout -- package-lock.json`
+discards the machine-generated copy and the pull goes through. The lockfile
+stays committed — `npm ci` will not run without it, and it is what guarantees
+the VPS installs the versions that were actually tested.
+
 `ecosystem.config.cjs` runs **one** instance on purpose. Socket.IO rooms live in
 this process's memory, so a second worker would mean a kitchen tablet connected
 to worker B never hears an order placed through worker A. Going multi-instance
