@@ -53,7 +53,10 @@ export interface ConsolidatedBill {
   cancelledLines: ConsolidatedLine[];
   subtotal: number;
   tax: number;
+  /** What the guest pays: subtotal + tax rounded to the whole rupee. */
   total: number;
+  /** total − (subtotal + tax), signed: +0.50 rounded up, −0.05 rounded down. */
+  roundOff: number;
   roundCount: number;
   itemCount: number;
   /**

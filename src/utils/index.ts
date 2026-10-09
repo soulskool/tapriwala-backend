@@ -15,6 +15,7 @@ export { signToken, verifyToken, type JwtPayload } from './jwt.js';
 export { getPagination, type PaginationParams } from './pagination.js';
 export {
   round2,
+  roundToRupee,
   lineAmount,
   lineTax,
   isValidObjectId,

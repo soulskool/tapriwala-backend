@@ -95,6 +95,46 @@ describe('user management', () => {
     });
     expect(result.status).toBe(400);
   });
+
+  it('never deactivates an admin, not even the admin themselves', async () => {
+    // Only an admin can reactivate anyone, so this is how a shop locks itself
+    // out of its own Staff page.
+    const users = await h.api('GET', '/admin/users', { token: h.tokens.admin });
+    const admin = users.data.find((user: any) => user.role === 'admin');
+
+    const result = await h.api('PATCH', `/admin/users/${admin.id}`, {
+      token: h.tokens.admin,
+      body: { isActive: false },
+    });
+    expect(result.status).toBe(403);
+
+    const login = await h.api('POST', '/auth/login', {
+      body: { phone: '9999999999', pin: '1234' },
+    });
+    expect(login.success).toBe(true);
+  });
+
+  it('still deactivates and reactivates other staff', async () => {
+    const users = await h.api('GET', '/admin/users', { token: h.tokens.admin });
+    const waiter = users.data.find((user: any) => user.phone === '9000000055');
+
+    const off = await h.api('PATCH', `/admin/users/${waiter.id}`, {
+      token: h.tokens.admin,
+      body: { isActive: false },
+    });
+    expect(off.success).toBe(true);
+    const refused = await h.api('POST', '/auth/login', {
+      body: { phone: '9000000055', pin: '5555' },
+    });
+    expect(refused.status).toBe(403);
+
+    await h.api('PATCH', `/admin/users/${waiter.id}`, {
+      token: h.tokens.admin,
+      body: { isActive: true },
+    });
+    const back = await h.api('POST', '/auth/login', { body: { phone: '9000000055', pin: '5555' } });
+    expect(back.success).toBe(true);
+  });
 });
 
 describe('audit trail', () => {
@@ -143,6 +183,22 @@ describe('audit trail', () => {
     // This is the answer to "who cancelled that, and why".
     expect(audit.data[0].meta.reason).toBe('guest left');
     expect(audit.data[0].actor.role).toBe('waiter');
+  });
+
+  it('names the products a row mentions, so the screen never shows a bare code', async () => {
+    const audit = await h.api('GET', `/admin/audit?sessionId=${sessionId}&action=round.placed`, {
+      token: h.tokens.admin,
+    });
+    expect(audit.data[0].after.items[0].displayName).toBe('Masala Tea');
+    expect(audit.data[0].productNames).toEqual({ BEV001: 'Masala Tea' });
+  });
+
+  it('filters by table code, whatever case it is typed in', async () => {
+    const audit = await h.api('GET', '/admin/audit?tableCode=m2&limit=100', {
+      token: h.tokens.admin,
+    });
+    expect(audit.data.length).toBeGreaterThan(0);
+    expect(audit.data.every((entry: any) => entry.tableCode === 'M2')).toBe(true);
   });
 
   it('paginates', async () => {

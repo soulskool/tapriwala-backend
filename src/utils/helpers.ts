@@ -15,6 +15,20 @@ export function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+/**
+ * A bill rounded to the whole rupee, half up: ₹451.50 → ₹452, ₹169.05 → ₹169.
+ *
+ * Only the final bill is rounded — never a line, never the tax — so the GST
+ * figures on the paper stay exact. The difference comes back as its own signed
+ * figure, which is what lets the receipt print a ROUND OFF line and still add
+ * up: subtotal + tax + roundOff is exactly what the guest paid.
+ */
+export function roundToRupee(exact: number): { total: number; roundOff: number } {
+  const precise = round2(exact);
+  const total = Math.round(precise);
+  return { total, roundOff: round2(total - precise) };
+}
+
 /** Line amount before tax. */
 export function lineAmount(unitPrice: number, quantity: number): number {
   return round2(unitPrice * quantity);

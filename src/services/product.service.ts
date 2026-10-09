@@ -172,7 +172,7 @@ export async function setAvailability(
     actor,
     before: { isAvailable: before },
     after: { isAvailable },
-    meta: { reason, productCode: product.productCode },
+    meta: { reason, productCode: product.productCode, displayName: product.displayName },
   });
 
   emitToAll(SOCKET_EVENTS.PRODUCT_AVAILABILITY, {

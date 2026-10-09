@@ -45,6 +45,12 @@ export interface IBillingExport {
   lineItems: IBillingExportLine[];
   subtotal: number;
   tax: number;
+  /**
+   * total − (subtotal + tax). Zero on every bill saved before bills were
+   * rounded to the rupee — those totals were charged to the paisa and stay so.
+   */
+  roundOff: number;
+  /** What was charged. Whole rupees on every bill since rounding began. */
   total: number;
   exportMethod: ExportMethod;
   exportStatus: ExportStatus;
@@ -97,6 +103,10 @@ const billingExportSchema = new Schema<IBillingExport>(
     lineItems: { type: [lineItemSchema], required: true },
     subtotal: { type: Number, required: true, min: 0 },
     tax: { type: Number, required: true, min: 0 },
+    // Signed, so no `min`. Defaulted rather than required, and no migration:
+    // an old bill has nothing stored and genuinely had no round off. `.lean()`
+    // skips this default, so readers use `?? 0`.
+    roundOff: { type: Number, default: 0 },
     total: { type: Number, required: true, min: 0 },
     exportMethod: { type: String, required: true, enum: EXPORT_METHOD_VALUES },
     exportStatus: {

@@ -373,3 +373,15 @@ export const SOCKET_ROOMS = {
 
 /** Staff rooms that receive "something changed on the floor" traffic. */
 export const STAFF_ROLE_ROOMS: Role[] = [ROLES.WAITER, ROLES.KITCHEN, ROLES.BILLING, ROLES.ADMIN];
+
+/**
+ * The café's day, for "sales on 8 October".
+ *
+ * Stated outright rather than read from the server clock: the VPS runs on UTC,
+ * where an IST day starts at 18:30 the evening before, so a 9pm bill would be
+ * booked to tomorrow. India keeps no daylight saving, so the fixed offset and
+ * the zone name can never disagree — the offset bounds the query, the name
+ * labels each bill's day inside MongoDB.
+ */
+export const BUSINESS_TIMEZONE = 'Asia/Kolkata';
+export const BUSINESS_UTC_OFFSET = '+05:30';

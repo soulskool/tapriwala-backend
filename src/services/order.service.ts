@@ -242,6 +242,8 @@ export async function placeRound(
       total: totals.total,
       items: items.map((item) => ({
         productCode: item.productCode,
+        // Snapshotted so the trail reads "2 x Masala Tea" even after a rename.
+        displayName: item.displayName,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
       })),
@@ -384,6 +386,7 @@ export async function updateItemStatus(
     meta: {
       itemId: String(item._id),
       productCode: item.productCode,
+      displayName: item.displayName,
       quantity: item.quantity,
       kotId: round.kotId,
       reason: input.reason ?? '',

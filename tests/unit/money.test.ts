@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { ITEM_STATUS } from '../../src/config/constants.js';
 import { totalsForItems } from '../../src/services/statusDerivation.js';
-import { lineAmount, lineTax, round2 } from '../../src/utils/helpers.js';
+import { lineAmount, lineTax, round2, roundToRupee } from '../../src/utils/helpers.js';
 
 /**
  * Money. The one area where "close enough" is not acceptable, because the
@@ -34,6 +34,31 @@ describe('round2', () => {
   it('leaves whole numbers alone', () => {
     expect(round2(140)).toBe(140);
     expect(round2(0)).toBe(0);
+  });
+});
+
+describe('roundToRupee', () => {
+  it('rounds the bill to the whole rupee, half up, and says by how much', () => {
+    // The owner's examples, off the Billed list.
+    expect(roundToRupee(451.5)).toEqual({ total: 452, roundOff: 0.5 });
+    expect(roundToRupee(169.05)).toEqual({ total: 169, roundOff: -0.05 });
+    expect(roundToRupee(236.25)).toEqual({ total: 236, roundOff: -0.25 });
+    expect(roundToRupee(269.85)).toEqual({ total: 270, roundOff: 0.15 });
+  });
+
+  it('leaves a whole-rupee bill alone', () => {
+    expect(roundToRupee(126)).toEqual({ total: 126, roundOff: 0 });
+    expect(roundToRupee(0)).toEqual({ total: 0, roundOff: 0 });
+  });
+
+  it('always adds back up: exact + roundOff === total', () => {
+    // Floating-point sums arrive as 157.49999…; the paper must still add up.
+    for (const exact of [0.1 + 0.2, 157.5 - 1e-12, 99.99, 100.01, 1234.56]) {
+      const { total, roundOff } = roundToRupee(exact);
+      expect(Number.isInteger(total)).toBe(true);
+      expect(round2(round2(exact) + roundOff)).toBe(total);
+      expect(Math.abs(roundOff)).toBeLessThanOrEqual(0.5);
+    }
   });
 });
 

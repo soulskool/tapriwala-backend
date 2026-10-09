@@ -73,6 +73,7 @@ export const listAudit = asyncHandler(async (req, res) => {
       entityType: req.query.entityType as AuditEntity | undefined,
       entityId: req.query.entityId as string | undefined,
       sessionId: req.query.sessionId as string | undefined,
+      tableCode: typeof req.query.tableCode === 'string' ? req.query.tableCode : undefined,
       action: req.query.action as AuditAction | undefined,
       from: queryDate(req.query.from),
       to: queryDate(req.query.to),
@@ -82,6 +83,25 @@ export const listAudit = asyncHandler(async (req, res) => {
   );
 
   return sendPaginated(res, items, page, limit, total);
+});
+
+// ─── Sales ───────────────────────────────────────────────────────────────────
+
+/** GET /admin/sales/daily?from=YYYY-MM-DD&to=YYYY-MM-DD — both optional. */
+export const dailySales = asyncHandler(async (req, res) => {
+  const day = (value: unknown): string | undefined =>
+    typeof value === 'string' && value !== '' ? value : undefined;
+
+  const from = day(req.query.from);
+  const to = day(req.query.to);
+
+  return sendSuccess(
+    res,
+    await billingService.dailySales({
+      ...(from !== undefined ? { from } : {}),
+      ...(to !== undefined ? { to } : {}),
+    }),
+  );
 });
 
 // ─── Live operations overview ────────────────────────────────────────────────

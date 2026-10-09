@@ -4,6 +4,8 @@ import { Types } from 'mongoose';
 import {
   AUDIT_ACTION,
   AUDIT_ENTITY,
+  BUSINESS_TIMEZONE,
+  BUSINESS_UTC_OFFSET,
   EXPORT_METHOD,
   EXPORT_STATUS,
   ITEM_STATUS,
@@ -24,7 +26,7 @@ import {
 } from '../models/index.js';
 import type { ConsolidatedBill, ConsolidatedLine } from '../types/common.js';
 import { ApiError } from '../utils/ApiError.js';
-import { minutesSince, round2 } from '../utils/helpers.js';
+import { minutesSince, round2, roundToRupee } from '../utils/helpers.js';
 import { logger } from '../utils/logger.js';
 import { actorSnapshot, type Actor } from '../utils/actor.js';
 import * as auditService from './audit.service.js';
@@ -122,6 +124,11 @@ export async function consolidate(sessionId: string): Promise<ConsolidatedBill> 
   const subtotal = round2(lines.reduce((sum, line) => sum + line.amount, 0));
   const tax = round2(lines.reduce((sum, line) => sum + line.taxAmount, 0));
 
+  // The owner's rule: the guest pays whole rupees. Rounded here, once, so the
+  // counter screen, the paper, the saved bill and the day's sales all carry
+  // the same figure instead of each rounding for itself.
+  const { total, roundOff } = roundToRupee(subtotal + tax);
+
   return {
     sessionId: String(session._id),
     tableCode: session.tableCode,
@@ -132,7 +139,8 @@ export async function consolidate(sessionId: string): Promise<ConsolidatedBill> 
     cancelledLines: Array.from(cancelled.values()),
     subtotal,
     tax,
-    total: round2(subtotal + tax),
+    total,
+    roundOff,
     roundCount: rounds.length,
     itemCount,
     orderTypes,
@@ -298,6 +306,7 @@ export async function exportBill(input: ExportInput): Promise<{
     lineItems,
     subtotal: bill.subtotal,
     tax: bill.tax,
+    roundOff: bill.roundOff,
     total: bill.total,
     exportMethod: method,
     exportStatus: result.status,
@@ -535,6 +544,7 @@ export async function buildExportsWorkbook(filter: ListExportsFilter): Promise<B
     { header: 'Items', key: 'itemCount', width: 8 },
     { header: 'Subtotal', key: 'subtotal', width: 12, style: { numFmt: money } },
     { header: 'Tax', key: 'tax', width: 10, style: { numFmt: money } },
+    { header: 'Round off', key: 'roundOff', width: 10, style: { numFmt: money } },
     { header: 'Total', key: 'total', width: 12, style: { numFmt: money } },
     { header: 'Settlement', key: 'settlement', width: 13 },
     { header: 'Paid at', key: 'confirmedAt', width: 20, style: { numFmt: stamp } },
@@ -586,6 +596,8 @@ export async function buildExportsWorkbook(filter: ListExportsFilter): Promise<B
       itemCount: lineItems.reduce((sum, line) => sum + line.quantity, 0),
       subtotal: bill.subtotal,
       tax: bill.tax,
+      // Absent on bills saved before rounding, which had none.
+      roundOff: bill.roundOff ?? 0,
       total: bill.total,
       settlement,
       confirmedAt: excelDate(bill.confirmedAt),
@@ -622,6 +634,7 @@ export async function buildExportsWorkbook(filter: ListExportsFilter): Promise<B
       ),
       subtotal: round2(bills.reduce((n, b) => n + b.subtotal, 0)),
       tax: round2(bills.reduce((n, b) => n + b.tax, 0)),
+      roundOff: round2(bills.reduce((n, b) => n + (b.roundOff ?? 0), 0)),
       total: round2(bills.reduce((n, b) => n + b.total, 0)),
     });
     totalRow.font = { bold: true };
@@ -650,5 +663,152 @@ export async function buildExportsWorkbook(filter: ListExportsFilter): Promise<B
     buffer: Buffer.from(buffer),
     rowCount: bills.length,
     truncated: total > bills.length,
+  };
+}
+
+// ─── Day-wise sales ──────────────────────────────────────────────────────────
+
+/** A calendar day in the café's timezone, `YYYY-MM-DD`. */
+export type SalesDay = string;
+
+export interface DailySalesRow {
+  date: SalesDay;
+  bills: number;
+  subtotal: number;
+  tax: number;
+  roundOff: number;
+  total: number;
+}
+
+export interface DailySalesReport {
+  from: SalesDay;
+  to: SalesDay;
+  timezone: string;
+  /** Newest first, one row per day in the range — a day with no bills reads zero. */
+  days: DailySalesRow[];
+  totals: Omit<DailySalesRow, 'date'>;
+}
+
+/** Longest range one request may ask for. A year of rows is still one screen. */
+export const SALES_MAX_DAYS = 366;
+
+/** Default range when none is given: the last 30 days, today included. */
+const SALES_DEFAULT_DAYS = 30;
+
+const dayFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: BUSINESS_TIMEZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+/** Today, as the café's calendar has it — not the server's. */
+export function salesToday(now = new Date()): SalesDay {
+  return dayFormatter.format(now);
+}
+
+/**
+ * Calendar arithmetic on a `YYYY-MM-DD`. Done at UTC midnight purely as a
+ * counting device — no timezone is involved in "the day after the 7th".
+ */
+export function shiftDay(day: SalesDay, by: number): SalesDay {
+  const date = new Date(`${day}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + by);
+  return date.toISOString().slice(0, 10);
+}
+
+/** The instant a café day begins. */
+function dayStart(day: SalesDay): Date {
+  return new Date(`${day}T00:00:00.000${BUSINESS_UTC_OFFSET}`);
+}
+
+/**
+ * What the café took, day by day — the owner's end-of-day screen.
+ *
+ * **Only paid bills count.** A session can leave more than one bill behind:
+ * "Update bill" after a late order supersedes the first one, which stays in
+ * Billed unpaid (nothing is ever deleted), and a table freed without charging
+ * may have had a bill printed for it. Counting every saved bill would book
+ * the same table twice and book walk-outs as revenue. `confirmed` is the one
+ * status that means the counter took the money.
+ *
+ * A bill belongs to the day it was **generated**, which is the axis the Billed
+ * list and the Excel export already filter on — so this screen and the
+ * spreadsheet for the same day always show the same figure. For a café that
+ * prints and takes payment in one go the two moments are seconds apart.
+ */
+export async function dailySales(range: {
+  from?: SalesDay;
+  to?: SalesDay;
+}): Promise<DailySalesReport> {
+  const to = range.to ?? salesToday();
+  const from = range.from ?? shiftDay(to, -(SALES_DEFAULT_DAYS - 1));
+
+  // Checked here, not in the validator, because the defaults are filled here:
+  // `from` alone is legal and means "from then until today".
+  if (from > to) {
+    throw ApiError.badRequest('The start date is after the end date', [
+      { field: 'from', message: 'from must be on or before to' },
+    ]);
+  }
+  if (shiftDay(from, SALES_MAX_DAYS) <= to) {
+    throw ApiError.badRequest(`Pick a range of ${SALES_MAX_DAYS} days or fewer`, [
+      { field: 'from', message: `The range may span at most ${SALES_MAX_DAYS} days` },
+    ]);
+  }
+
+  const grouped = await BillingExport.aggregate<DailySalesRow & { _id: SalesDay }>([
+    {
+      $match: {
+        exportStatus: EXPORT_STATUS.CONFIRMED,
+        generatedAt: { $gte: dayStart(from), $lt: dayStart(shiftDay(to, 1)) },
+      },
+    },
+    {
+      $group: {
+        _id: {
+          $dateToString: { format: '%Y-%m-%d', date: '$generatedAt', timezone: BUSINESS_TIMEZONE },
+        },
+        bills: { $sum: 1 },
+        subtotal: { $sum: '$subtotal' },
+        tax: { $sum: '$tax' },
+        // Bills saved before rounding have no field at all.
+        roundOff: { $sum: { $ifNull: ['$roundOff', 0] } },
+        total: { $sum: '$total' },
+      },
+    },
+  ]);
+
+  const byDay = new Map(grouped.map((row) => [row._id, row]));
+
+  const days: DailySalesRow[] = [];
+  for (let day = to; day >= from; day = shiftDay(day, -1)) {
+    const row = byDay.get(day);
+    days.push({
+      date: day,
+      bills: row?.bills ?? 0,
+      // Summed in Mongo as doubles, so re-rounded here like every other figure.
+      subtotal: round2(row?.subtotal ?? 0),
+      tax: round2(row?.tax ?? 0),
+      roundOff: round2(row?.roundOff ?? 0),
+      total: round2(row?.total ?? 0),
+    });
+  }
+
+  const sum = (pick: (row: DailySalesRow) => number): number =>
+    round2(days.reduce((acc, row) => acc + pick(row), 0));
+
+  return {
+    from,
+    to,
+    timezone: BUSINESS_TIMEZONE,
+    days,
+    totals: {
+      bills: days.reduce((acc, row) => acc + row.bills, 0),
+      subtotal: sum((row) => row.subtotal),
+      tax: sum((row) => row.tax),
+      roundOff: sum((row) => row.roundOff),
+      total: sum((row) => row.total),
+    },
   };
 }

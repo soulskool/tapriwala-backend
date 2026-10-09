@@ -167,7 +167,11 @@ export async function update(input: UpdateInput): Promise<ServiceRequestDocument
     tableCode: request.tableCode,
     before: { status: before },
     after: { status: request.status },
-    meta: { responseMinutes: minutesSince(request.raisedAt, now), note: input.note ?? '' },
+    meta: {
+      type: request.type,
+      responseMinutes: minutesSince(request.raisedAt, now),
+      note: input.note ?? '',
+    },
     ip: input.ip ?? null,
   });
 

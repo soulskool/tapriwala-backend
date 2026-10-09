@@ -49,6 +49,7 @@ export {
 export {
   exportBillValidation,
   confirmExportValidation,
+  dailySalesValidation,
   exportsXlsxValidation,
   listExportsValidation,
 } from './billing.validator.js';

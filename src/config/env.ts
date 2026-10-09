@@ -104,7 +104,9 @@ export const env = {
   defaultTaxPercent: num('DEFAULT_TAX_PERCENT', 5),
 
   rateLimitWindowMs: num('RATE_LIMIT_WINDOW_MINUTES', 15) * 60 * 1000,
-  rateLimitMax: num('RATE_LIMIT_MAX', 600),
+  rateLimitMax: num('RATE_LIMIT_MAX', 50000),
+  /** Per signed-in staff member, not per IP — the whole café shares one Wi-Fi IP. */
+  rateLimitStaffMax: num('RATE_LIMIT_STAFF_MAX', 50000),
 
   // ── Storage (menu item images) ──
   storageDriver: oneOf<'local' | 'bunny'>('STORAGE_DRIVER', ['local', 'bunny'], 'local'),

@@ -1,4 +1,4 @@
-import { AUDIT_ACTION, AUDIT_ENTITY, type Role } from '../config/constants.js';
+import { AUDIT_ACTION, AUDIT_ENTITY, ROLES, type Role } from '../config/constants.js';
 import { User, hashPin, type UserDocument } from '../models/User.js';
 import { ApiError } from '../utils/ApiError.js';
 import { compact } from '../utils/helpers.js';
@@ -85,6 +85,13 @@ export async function updateUser(
 ): Promise<UserDocument> {
   const user = await User.findById(userId);
   if (!user) throw ApiError.notFound('User not found');
+
+  // An admin is never switched off, by anyone — themselves included. Admins
+  // are the only ones who can reactivate an account, so a deactivated admin is
+  // how the shop locks itself out of its own Staff page.
+  if (user.role === ROLES.ADMIN && payload.isActive === false) {
+    throw ApiError.forbidden('An admin account cannot be deactivated');
+  }
 
   const before = { name: user.name, phone: user.phone, role: user.role, isActive: user.isActive };
 

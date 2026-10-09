@@ -22,7 +22,8 @@
     "seed": "tsx src/scripts/seed.ts",
     "menu:check": "tsx src/scripts/importProducts.ts --dry-run",
     "menu:import": "tsx src/scripts/importProducts.ts",
-    "seed:reset": "tsx src/scripts/seed.ts --reset"
+    "seed:reset": "tsx src/scripts/seed.ts --reset",
+    "users:activate": "tsx src/scripts/activateUsers.ts"
   },
   "keywords": [
     "cafe",

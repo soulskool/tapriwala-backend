@@ -54,3 +54,21 @@ export const listExportsValidation: ValidationChain[] = [
     .isLength({ min: 1, max: 12 })
     .withMessage('tableCode must be 1-12 characters'),
 ];
+
+/**
+ * GET /admin/sales/daily — calendar days, not instants.
+ *
+ * `YYYY-MM-DD` and nothing else: "the 8th" means the café's 8th, and an ISO
+ * timestamp would smuggle in whichever timezone the sender's device was on.
+ * Range sanity (order, length) is checked by the service, which owns the
+ * defaults that make a half-given range meaningful.
+ */
+export const dailySalesValidation: ValidationChain[] = ['from', 'to'].map((field) =>
+  query(field)
+    .optional()
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage(`${field} must be a date like 2026-10-08`)
+    .bail()
+    .isISO8601({ strict: true })
+    .withMessage(`${field} is not a real date`),
+);

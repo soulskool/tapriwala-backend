@@ -34,6 +34,7 @@ const bill = (lines: ConsolidatedLine[]): ConsolidatedBill => ({
   subtotal: 0,
   tax: 0,
   total: 0,
+  roundOff: 0,
   roundCount: 1,
   itemCount: 1,
   orderTypes: ['dining'],
