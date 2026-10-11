@@ -51,5 +51,6 @@ export {
   confirmExportValidation,
   dailySalesValidation,
   exportsXlsxValidation,
+  itemSalesValidation,
   listExportsValidation,
 } from './billing.validator.js';

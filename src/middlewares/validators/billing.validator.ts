@@ -1,6 +1,10 @@
 import { body, query, type ValidationChain } from 'express-validator';
 
-import { EXPORT_METHOD_VALUES, EXPORT_STATUS_VALUES } from '../../config/constants.js';
+import {
+  EXPORT_METHOD_VALUES,
+  EXPORT_STATUS_VALUES,
+  SALES_PERIOD_VALUES,
+} from '../../config/constants.js';
 
 /** POST /billing/:sessionId/export — hand the consolidated bill to the POS. */
 export const exportBillValidation: ValidationChain[] = [
@@ -72,3 +76,12 @@ export const dailySalesValidation: ValidationChain[] = ['from', 'to'].map((field
     .isISO8601({ strict: true })
     .withMessage(`${field} is not a real date`),
 );
+
+/** GET /admin/sales/items[/xlsx] — the same dates, plus how to bucket them. */
+export const itemSalesValidation: ValidationChain[] = [
+  ...dailySalesValidation,
+  query('period')
+    .optional()
+    .isIn(SALES_PERIOD_VALUES)
+    .withMessage(`period must be one of: ${SALES_PERIOD_VALUES.join(', ')}`),
+];

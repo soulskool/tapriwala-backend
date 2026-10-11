@@ -718,8 +718,37 @@ export function shiftDay(day: SalesDay, by: number): SalesDay {
 }
 
 /** The instant a café day begins. */
-function dayStart(day: SalesDay): Date {
+export function dayStart(day: SalesDay): Date {
   return new Date(`${day}T00:00:00.000${BUSINESS_UTC_OFFSET}`);
+}
+
+/**
+ * Fills in a half-given range and refuses a nonsensical one. Shared by every
+ * sales report, so "the last 30 days" and the 366-day cap mean the same thing
+ * on each of them.
+ *
+ * Checked here, not in the validator, because the defaults are filled here:
+ * `from` alone is legal and means "from then until today".
+ */
+export function resolveSalesRange(range: { from?: SalesDay; to?: SalesDay }): {
+  from: SalesDay;
+  to: SalesDay;
+} {
+  const to = range.to ?? salesToday();
+  const from = range.from ?? shiftDay(to, -(SALES_DEFAULT_DAYS - 1));
+
+  if (from > to) {
+    throw ApiError.badRequest('The start date is after the end date', [
+      { field: 'from', message: 'from must be on or before to' },
+    ]);
+  }
+  if (shiftDay(from, SALES_MAX_DAYS) <= to) {
+    throw ApiError.badRequest(`Pick a range of ${SALES_MAX_DAYS} days or fewer`, [
+      { field: 'from', message: `The range may span at most ${SALES_MAX_DAYS} days` },
+    ]);
+  }
+
+  return { from, to };
 }
 
 /**
@@ -741,21 +770,7 @@ export async function dailySales(range: {
   from?: SalesDay;
   to?: SalesDay;
 }): Promise<DailySalesReport> {
-  const to = range.to ?? salesToday();
-  const from = range.from ?? shiftDay(to, -(SALES_DEFAULT_DAYS - 1));
-
-  // Checked here, not in the validator, because the defaults are filled here:
-  // `from` alone is legal and means "from then until today".
-  if (from > to) {
-    throw ApiError.badRequest('The start date is after the end date', [
-      { field: 'from', message: 'from must be on or before to' },
-    ]);
-  }
-  if (shiftDay(from, SALES_MAX_DAYS) <= to) {
-    throw ApiError.badRequest(`Pick a range of ${SALES_MAX_DAYS} days or fewer`, [
-      { field: 'from', message: `The range may span at most ${SALES_MAX_DAYS} days` },
-    ]);
-  }
+  const { from, to } = resolveSalesRange(range);
 
   const grouped = await BillingExport.aggregate<DailySalesRow & { _id: SalesDay }>([
     {

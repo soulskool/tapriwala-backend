@@ -8,6 +8,7 @@ import {
   createUserValidation,
   dailySalesValidation,
   dateRangeQuery,
+  itemSalesValidation,
   objectIdParam,
   paginationQuery,
   updateUserValidation,
@@ -27,6 +28,14 @@ router.get('/overview', adminController.overview);
  * owner's question.
  */
 router.get('/sales/daily', validate(dailySalesValidation), adminController.dailySales);
+
+/**
+ * Item-wise sales — every item's quantity and takings, its price variants, its
+ * category, and a per-day or per-month breakdown. Same paid-bills rule.
+ * `/xlsx` is the same report as a workbook.
+ */
+router.get('/sales/items', validate(itemSalesValidation), adminController.itemSales);
+router.get('/sales/items/xlsx', validate(itemSalesValidation), adminController.itemSalesXlsx);
 
 router.get('/audit', validate([...paginationQuery, ...dateRangeQuery]), adminController.listAudit);
 

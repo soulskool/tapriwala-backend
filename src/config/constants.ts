@@ -385,3 +385,15 @@ export const STAFF_ROLE_ROOMS: Role[] = [ROLES.WAITER, ROLES.KITCHEN, ROLES.BILL
  */
 export const BUSINESS_TIMEZONE = 'Asia/Kolkata';
 export const BUSINESS_UTC_OFFSET = '+05:30';
+
+/**
+ * How the item-wise sales report buckets each item's takings: one column per
+ * café day, or per calendar month. Mirrored in the frontend.
+ */
+export const SALES_PERIOD = {
+  DAY: 'day',
+  MONTH: 'month',
+} as const;
+
+export type SalesPeriod = (typeof SALES_PERIOD)[keyof typeof SALES_PERIOD];
+export const SALES_PERIOD_VALUES = Object.values(SALES_PERIOD) as SalesPeriod[];

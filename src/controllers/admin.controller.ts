@@ -1,8 +1,9 @@
-import type { AuditAction, AuditEntity, Role } from '../config/constants.js';
+import type { AuditAction, AuditEntity, Role, SalesPeriod } from '../config/constants.js';
 import * as auditService from '../services/audit.service.js';
 import * as authService from '../services/auth.service.js';
 import * as billingService from '../services/billing.service.js';
 import * as orderService from '../services/order.service.js';
+import * as salesService from '../services/sales.service.js';
 import * as serviceRequestService from '../services/serviceRequest.service.js';
 import * as tableService from '../services/table.service.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -87,14 +88,25 @@ export const listAudit = asyncHandler(async (req, res) => {
 
 // ─── Sales ───────────────────────────────────────────────────────────────────
 
+/** A validated `YYYY-MM-DD` query value, or nothing. */
+const salesDay = (value: unknown): string | undefined =>
+  typeof value === 'string' && value !== '' ? value : undefined;
+
+/** The optional from/to/period of a sales report, without undefined keys. */
+function salesQuery(query: Record<string, unknown>) {
+  const from = salesDay(query.from);
+  const to = salesDay(query.to);
+  const period = salesDay(query.period) as SalesPeriod | undefined;
+  return {
+    ...(from !== undefined ? { from } : {}),
+    ...(to !== undefined ? { to } : {}),
+    ...(period !== undefined ? { period } : {}),
+  };
+}
+
 /** GET /admin/sales/daily?from=YYYY-MM-DD&to=YYYY-MM-DD — both optional. */
 export const dailySales = asyncHandler(async (req, res) => {
-  const day = (value: unknown): string | undefined =>
-    typeof value === 'string' && value !== '' ? value : undefined;
-
-  const from = day(req.query.from);
-  const to = day(req.query.to);
-
+  const { from, to } = salesQuery(req.query);
   return sendSuccess(
     res,
     await billingService.dailySales({
@@ -102,6 +114,25 @@ export const dailySales = asyncHandler(async (req, res) => {
       ...(to !== undefined ? { to } : {}),
     }),
   );
+});
+
+/** GET /admin/sales/items?from&to&period=day|month — all optional. */
+export const itemSales = asyncHandler(async (req, res) => {
+  return sendSuccess(res, await salesService.itemSales(salesQuery(req.query)));
+});
+
+/** GET /admin/sales/items/xlsx — the item-wise report as a workbook. */
+export const itemSalesXlsx = asyncHandler(async (req, res) => {
+  const { buffer, report } = await salesService.buildItemSalesWorkbook(salesQuery(req.query));
+  res.setHeader(
+    'Content-Type',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  );
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="item-sales-${report.from}-to-${report.to}.xlsx"`,
+  );
+  return res.send(buffer);
 });
 
 // ─── Live operations overview ────────────────────────────────────────────────
