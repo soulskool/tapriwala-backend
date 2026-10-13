@@ -9,6 +9,7 @@ import {
   dailySalesValidation,
   dateRangeQuery,
   itemSalesValidation,
+  listAuditValidation,
   objectIdParam,
   paginationQuery,
   updateUserValidation,
@@ -37,7 +38,11 @@ router.get('/sales/daily', validate(dailySalesValidation), adminController.daily
 router.get('/sales/items', validate(itemSalesValidation), adminController.itemSales);
 router.get('/sales/items/xlsx', validate(itemSalesValidation), adminController.itemSalesXlsx);
 
-router.get('/audit', validate([...paginationQuery, ...dateRangeQuery]), adminController.listAudit);
+router.get(
+  '/audit',
+  validate([...listAuditValidation, ...paginationQuery, ...dateRangeQuery]),
+  adminController.listAudit,
+);
 
 router.get('/users', adminController.listUsers);
 router.post('/users', validate(createUserValidation), adminController.createUser);

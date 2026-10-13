@@ -58,7 +58,23 @@ function oneOf<T extends string>(key: string, allowed: readonly T[], fallback: T
   return raw;
 }
 
+function bool(key: string, fallback: boolean): boolean {
+  const raw = process.env[key];
+  if (raw === undefined || raw.trim() === '') return fallback;
+  const value = raw.trim().toLowerCase();
+  if (value === 'true' || value === '1') return true;
+  if (value === 'false' || value === '0') return false;
+  invalid.push(`${key} must be true or false (got "${raw}")`);
+  return fallback;
+}
+
 const nodeEnv = oneOf<NodeEnv>('NODE_ENV', ['development', 'production', 'test'], 'development');
+const corsOrigins = list('CORS_ORIGINS', ['http://localhost:3000']);
+const cookieSameSite = oneOf<'lax' | 'strict' | 'none'>(
+  'COOKIE_SAMESITE',
+  ['lax', 'strict', 'none'],
+  'lax',
+);
 
 export const env = {
   nodeEnv,
@@ -87,15 +103,39 @@ export const env = {
    * Only set `none` when the two are on genuinely different domains. It
    * requires HTTPS, which is why `secure` is forced on below.
    */
-  cookieSameSite: oneOf<'lax' | 'strict' | 'none'>(
-    'COOKIE_SAMESITE',
-    ['lax', 'strict', 'none'],
-    'lax',
-  ),
+  cookieSameSite,
   /** Set to share one cookie across subdomains, e.g. `.cafe.com`. */
   cookieDomain: optional('COOKIE_DOMAIN', ''),
+  /**
+   * Whether the session cookie carries `Secure`.
+   *
+   * Defaults on whenever the deployment is evidently HTTPS — production, a
+   * `none` cookie, or every allowed browser origin being https:// — so a
+   * server that forgot `NODE_ENV=production` still never sends the staff
+   * session over plain HTTP. Local http://localhost stays off.
+   */
+  cookieSecure: bool(
+    'COOKIE_SECURE',
+    nodeEnv === 'production' ||
+      cookieSameSite === 'none' ||
+      (corsOrigins.length > 0 && corsOrigins.every((origin) => origin.startsWith('https://'))),
+  ),
 
-  corsOrigins: list('CORS_ORIGINS', ['http://localhost:3000']),
+  /**
+   * Express `trust proxy` hop count. 1 = exactly one reverse proxy (nginx) in
+   * front, which is what makes `req.ip` the real client for rate limiting and
+   * the audit log. 0 = trust nothing (direct connections, local dev).
+   */
+  trustProxy: num('TRUST_PROXY', nodeEnv === 'production' ? 1 : 0),
+
+  /**
+   * Stack traces and raw 5xx messages in API responses. Off unless explicitly
+   * asked for: they hand out server paths and library internals, and the full
+   * error is always in the server log anyway.
+   */
+  exposeErrorDetails: bool('EXPOSE_ERROR_DETAILS', false),
+
+  corsOrigins,
   customerBaseUrl: optional('CUSTOMER_BASE_URL', 'http://localhost:3000'),
 
   serviceRequestEscalationMinutes: num('SERVICE_REQUEST_ESCALATION_MINUTES', 5),
@@ -148,6 +188,10 @@ export function assertEnv(): void {
   // 401s on the very next request.
   if (env.cookieSameSite === 'none' && !env.isProduction) {
     problems.push('COOKIE_SAMESITE=none requires HTTPS, so it only works with NODE_ENV=production');
+  }
+
+  if (env.isProduction && env.exposeErrorDetails) {
+    problems.push('EXPOSE_ERROR_DETAILS must not be enabled in production');
   }
 
   // Fail at boot, not on the first image upload during service.

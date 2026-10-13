@@ -3,6 +3,7 @@ import http from 'node:http';
 import { createApp } from './app.js';
 import { connectDB, disconnectDB } from './config/db.js';
 import { assertEnv, env } from './config/env.js';
+import { findAccountsWithSeedPins } from './services/auth.service.js';
 import { initSocketServer } from './sockets/index.js';
 import { logger } from './utils/logger.js';
 
@@ -29,9 +30,25 @@ async function bootstrap(): Promise<void> {
   server.listen(env.port, () => {
     logger.info(`Tapriwala by Treatmeets API listening on port ${env.port} [${env.nodeEnv}]`);
     logger.info(`REST base: http://localhost:${env.port}${env.apiPrefix}`);
+    void warnAboutSeedPins();
   });
 
   registerShutdown(server);
+}
+
+/**
+ * Logs, after boot, every staff account still on a published seed PIN.
+ * Never blocks or fails startup: a warning, not a gate.
+ */
+async function warnAboutSeedPins(): Promise<void> {
+  try {
+    const exposed = await findAccountsWithSeedPins();
+    for (const account of exposed) {
+      logger.warn(`SECURITY: ${account} still uses the published seed PIN. Change it now.`);
+    }
+  } catch (error) {
+    logger.warn(`Seed-PIN check skipped: ${(error as Error).message}`);
+  }
 }
 
 /** Drains in-flight requests before exiting, so a deploy never truncates an order. */

@@ -1,7 +1,4 @@
 import crypto from 'node:crypto';
-import { Types } from 'mongoose';
-
-import { ApiError } from './ApiError.js';
 
 // ─── Money ───────────────────────────────────────────────────────────────────
 
@@ -39,25 +36,6 @@ export function lineTax(unitPrice: number, quantity: number, taxPercent: number)
   return round2((unitPrice * quantity * taxPercent) / 100);
 }
 
-// ─── Ids ─────────────────────────────────────────────────────────────────────
-
-export function isValidObjectId(value: unknown): value is string {
-  return typeof value === 'string' && Types.ObjectId.isValid(value);
-}
-
-/** Parses an id from a route param, raising a 400 rather than a Mongoose CastError. */
-export function toObjectId(value: string, label = 'id'): Types.ObjectId {
-  if (!Types.ObjectId.isValid(value)) {
-    throw ApiError.badRequest(`Invalid ${label} format`);
-  }
-  return new Types.ObjectId(value);
-}
-
-/** Stringifies an ObjectId-ish value for socket payloads and comparisons. */
-export function idToString(value: Types.ObjectId | string | { toString(): string }): string {
-  return typeof value === 'string' ? value : value.toString();
-}
-
 // ─── Tokens ──────────────────────────────────────────────────────────────────
 
 /** Random idempotency key, used when a client did not supply one. */
@@ -71,19 +49,6 @@ export function minutesSince(date: Date | string | null | undefined, now = new D
   if (!date) return 0;
   const then = date instanceof Date ? date : new Date(date);
   return Math.max(0, Math.floor((now.getTime() - then.getTime()) / 60000));
-}
-
-export function secondsSince(date: Date | string | null | undefined, now = new Date()): number {
-  if (!date) return 0;
-  const then = date instanceof Date ? date : new Date(date);
-  return Math.max(0, Math.floor((now.getTime() - then.getTime()) / 1000));
-}
-
-/** Local midnight for `date` — the boundary used by the daily session sequence. */
-export function startOfDay(date = new Date()): Date {
-  const copy = new Date(date);
-  copy.setHours(0, 0, 0, 0);
-  return copy;
 }
 
 /** `YYYY-MM-DD` in local time, used as the daily counter scope key. */

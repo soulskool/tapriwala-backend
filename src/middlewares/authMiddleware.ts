@@ -1,22 +1,11 @@
-import type { Request, RequestHandler } from 'express';
+import type { RequestHandler } from 'express';
 
 import { ROLES, type Role } from '../config/constants.js';
-import { env } from '../config/env.js';
-import { TableMaster, TableSession } from '../models/index.js';
+import { TableMaster, TableSession, User } from '../models/index.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { tokenFromRequest } from '../utils/authToken.js';
 import { verifyToken } from '../utils/jwt.js';
-import { User } from '../models/User.js';
-
-/** Token may arrive as a Bearer header (mobile/web fetch) or an httpOnly cookie. */
-function extractToken(req: Request): string | null {
-  const header = req.headers.authorization;
-  if (header?.startsWith('Bearer ')) {
-    return header.slice(7).trim();
-  }
-  const cookieToken = (req.cookies as Record<string, string> | undefined)?.[env.cookieName];
-  return cookieToken ?? null;
-}
 
 /**
  * Requires a valid staff token.
@@ -25,7 +14,7 @@ function extractToken(req: Request): string | null {
  * immediately instead of at token expiry — important for shared floor devices.
  */
 export const authenticate: RequestHandler = asyncHandler(async (req, _res, next) => {
-  const token = extractToken(req);
+  const token = tokenFromRequest(req);
   if (!token) {
     throw ApiError.unauthorized('Authentication required');
   }
@@ -59,28 +48,6 @@ export const authorize =
     }
     next(ApiError.forbidden(`This action requires one of: ${allowed.join(', ')}`));
   };
-
-/**
- * Attaches the staff user when a token is present, but never rejects.
- * Used on endpoints both staff and QR customers hit (e.g. the menu).
- */
-export const optionalAuth: RequestHandler = asyncHandler(async (req, _res, next) => {
-  const token = extractToken(req);
-  if (!token) {
-    next();
-    return;
-  }
-  try {
-    const payload = verifyToken(token);
-    const user = await User.findById(payload.sub).select('name role isActive').lean();
-    if (user?.isActive) {
-      req.user = { id: String(user._id), role: user.role, name: user.name };
-    }
-  } catch {
-    // A bad token on an optional route is simply "not logged in".
-  }
-  next();
-});
 
 /**
  * Binds a tokenless customer request to exactly one table.
@@ -123,22 +90,5 @@ export const resolveTableCode: RequestHandler = asyncHandler(async (req, _res, n
   };
   next();
 });
-
-/**
- * Guards a session route reached through a scanned table: the session in the
- * URL must be the one currently live on that table.
- */
-export const assertCustomerOwnsSession: RequestHandler = (req, _res, next) => {
-  const sessionId = req.params.sessionId ?? req.params.id;
-  if (!req.customer) {
-    next(ApiError.unauthorized('Table context missing'));
-    return;
-  }
-  if (!sessionId || req.customer.sessionId !== sessionId) {
-    next(ApiError.forbidden('This order does not belong to your table'));
-    return;
-  }
-  next();
-};
 
 export default authenticate;

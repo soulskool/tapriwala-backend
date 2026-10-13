@@ -4,7 +4,14 @@ import { APP_CONSTANTS, ROLE_VALUES } from '../../config/constants.js';
 
 /** POST /auth/login — shared-device PIN login. */
 export const loginValidation: ValidationChain[] = [
+  // `.not().isArray()` first: express-validator checks an array element by
+  // element, so `["9999999999"]` would pass the regex below and reach Mongo,
+  // which reads an array as `$in`. One phone, one PIN, as plain strings.
   body('phone')
+    .not()
+    .isArray()
+    .withMessage('Phone must be a 10 digit number')
+    .bail()
     .trim()
     .notEmpty()
     .withMessage('Phone is required')
@@ -12,6 +19,10 @@ export const loginValidation: ValidationChain[] = [
     .withMessage('Phone must be a 10 digit number'),
 
   body('pin')
+    .not()
+    .isArray()
+    .withMessage(`PIN must be ${APP_CONSTANTS.PIN_LENGTH} digits`)
+    .bail()
     .trim()
     .notEmpty()
     .withMessage('PIN is required')

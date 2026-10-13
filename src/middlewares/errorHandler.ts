@@ -91,9 +91,13 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
     logger.warn(`Request failed: ${error.message}`, { ...logPayload, stack: undefined });
   }
 
-  // Never leak an internal message or stack to a client in production.
+  // Never leak an internal message or stack to a client. Keyed on an explicit
+  // opt-in rather than NODE_ENV, so a server that forgot NODE_ENV=production
+  // still answers with a generic sentence; the full error is logged above.
   const clientMessage =
-    isServerError && env.isProduction ? 'Something went wrong. Please try again.' : error.message;
+    isServerError && !env.exposeErrorDetails
+      ? 'Something went wrong. Please try again.'
+      : error.message;
 
   // `details` is passed through untouched — validation errors are an ARRAY of
   // { field, message } and the frontends index into it to mark inputs red.
@@ -103,7 +107,7 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
     requestId: req.requestId ?? null,
   };
 
-  if (!env.isProduction) payload.stack = error.stack;
+  if (env.exposeErrorDetails) payload.stack = error.stack;
 
   res.status(error.statusCode).json(payload);
 };

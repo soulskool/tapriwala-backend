@@ -1,3 +1,5 @@
+import bcrypt from 'bcryptjs';
+
 import { AUDIT_ACTION, AUDIT_ENTITY, ROLES, type Role } from '../config/constants.js';
 import { User, hashPin, type UserDocument } from '../models/User.js';
 import { ApiError } from '../utils/ApiError.js';
@@ -20,16 +22,35 @@ export interface LoginResult {
   user: { id: string; name: string; role: Role };
 }
 
+/**
+ * A real bcrypt hash of nothing anyone can type, compared against when the
+ * phone is unknown. Without it an unknown number answers in ~1 ms and a known
+ * one in ~60 ms, and that gap alone tells a stranger which phones are staff.
+ */
+let decoyHash: Promise<string> | null = null;
+function getDecoyHash(): Promise<string> {
+  decoyHash ??= hashPin(`decoy-${Date.now()}-${Math.random()}`);
+  return decoyHash;
+}
+
 export async function login(phone: string, pin: string, ip?: string | null): Promise<LoginResult> {
-  const user = await User.findOne({ phone }).select('+pinHash name role isActive phone');
+  const user = await User.findOne({ phone: String(phone) }).select(
+    '+pinHash name role isActive phone',
+  );
 
-  // Same message either way — never reveal which staff phones exist.
+  // Same message and the same bcrypt cost either way — never reveal which
+  // staff phones exist, or which of them are switched off.
   const invalid = ApiError.unauthorized('Invalid phone or PIN');
-  if (!user) throw invalid;
-  if (!user.isActive) throw ApiError.forbidden('This account is deactivated');
+  if (!user) {
+    await bcrypt.compare(String(pin), await getDecoyHash());
+    throw invalid;
+  }
 
-  const matches = await user.comparePin(pin);
+  const matches = await user.comparePin(String(pin));
   if (!matches) throw invalid;
+
+  // Only someone who already knows the PIN learns the account is off.
+  if (!user.isActive) throw ApiError.forbidden('This account is deactivated');
 
   user.lastLoginAt = new Date();
   await user.save();
@@ -122,6 +143,39 @@ export async function updateUser(
   });
 
   return user;
+}
+
+/**
+ * The PINs the seed script creates, which are printed in the README and in
+ * every seed run. An account still using one is an open door.
+ */
+const PUBLISHED_SEED_PINS: Record<string, string> = {
+  '9999999999': '1234',
+  '9000000001': '1111',
+  '9000000002': '2222',
+  '9000000003': '3333',
+};
+
+/**
+ * Names every active account that still has its published seed PIN.
+ *
+ * Read-only and called once after boot: it only logs, so a café that has not
+ * changed its PINs yet keeps working, but the server log says so every start.
+ */
+export async function findAccountsWithSeedPins(): Promise<string[]> {
+  const users = await User.find({
+    phone: { $in: Object.keys(PUBLISHED_SEED_PINS) },
+    isActive: true,
+  }).select('+pinHash name phone role');
+
+  const exposed: string[] = [];
+  for (const user of users) {
+    const seedPin = PUBLISHED_SEED_PINS[user.phone];
+    if (seedPin && (await user.comparePin(seedPin))) {
+      exposed.push(`${user.name} (${user.role}, ${user.phone})`);
+    }
+  }
+  return exposed;
 }
 
 export async function listUsers(includeInactive = false): Promise<UserDocument[]> {

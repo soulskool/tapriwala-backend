@@ -3,7 +3,7 @@ import { Server, type DefaultEventsMap, type Socket } from 'socket.io';
 
 import { ROLE_VALUES, SOCKET_EVENTS, SOCKET_ROOMS, type Role } from '../config/constants.js';
 import { env } from '../config/env.js';
-import { TableMaster, TableSession } from '../models/index.js';
+import { TableMaster, TableSession, User } from '../models/index.js';
 import { logger } from '../utils/logger.js';
 import { verifyToken } from '../utils/jwt.js';
 import { registerSocketServer } from './emitter.js';
@@ -82,6 +82,17 @@ export function initSocketServer(httpServer: HttpServer): CafeSocketServer {
       origin: env.corsOrigins,
       credentials: true,
     },
+    /**
+     * CORS only governs the polling transport. A page on any other site can
+     * still open a raw WebSocket here, and the browser would attach a staff
+     * cookie to it on same-site hosts. So the Origin is checked for every
+     * handshake, on both transports. No Origin (native apps, server-side
+     * clients, tests) is allowed through, the same rule REST applies.
+     */
+    allowRequest: (req, callback) => {
+      const origin = req.headers.origin;
+      callback(null, !origin || env.corsOrigins.includes(origin));
+    },
     // Floor Wi-Fi drops; give a reconnecting client a grace window.
     pingTimeout: 25_000,
     pingInterval: 20_000,
@@ -124,9 +135,19 @@ export function initSocketServer(httpServer: HttpServer): CafeSocketServer {
 
       if (staffToken) {
         const payload = verifyToken(staffToken);
-        socket.data.role = payload.role;
-        socket.data.userId = payload.sub;
-        socket.data.name = payload.name;
+
+        // Same rule as REST `authenticate`: the account is re-read, so a
+        // deactivated or deleted user cannot keep a live feed of the floor
+        // for the rest of their token's 12 hours.
+        const user = await User.findById(payload.sub).select('name role isActive').lean();
+        if (!user?.isActive) {
+          next(new Error('Authentication failed'));
+          return;
+        }
+
+        socket.data.role = user.role;
+        socket.data.userId = String(user._id);
+        socket.data.name = user.name;
         next();
         return;
       }

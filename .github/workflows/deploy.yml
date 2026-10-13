@@ -1,0 +1,138 @@
+# Deploys `main` to the VPS on every push.
+#
+# It runs the same steps as the manual deploy (pull, install, build, pm2
+# restart), so the manual way still works whenever this does not:
+#
+#   cd /var/www/tapriwala/tapriwala-backend
+#   git pull origin main && npm ci && npm run build && pm2 restart tapriwala-backend
+#
+# If any step fails, the server is put back on the previous commit, its old
+# build output and its old node_modules, and the run goes red. The step that
+# failed and the last pm2 log lines are printed in the run's log. Every run is
+# also appended to /var/log/tapriwala/deploy-backend.log on the VPS.
+#
+# Secrets (Settings -> Secrets and variables -> Actions):
+#   VPS_HOST, VPS_USER, VPS_PORT, VPS_SSH_KEY
+
+name: Deploy backend
+
+on:
+  push:
+    branches: [main]
+  # A "Run workflow" button on the Actions tab, to redeploy by hand.
+  workflow_dispatch:
+
+# A second push waits for the first deploy to finish rather than racing it.
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Deploy on the VPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          port: ${{ secrets.VPS_PORT }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 25m
+          script: |
+            bash -s <<'DEPLOY'
+            set -euo pipefail
+
+            APP_DIR=/var/www/tapriwala/tapriwala-backend
+            PM2_NAME=tapriwala-backend
+            BUILD_DIR=dist
+
+            # Every run is kept on the server as well as in GitHub.
+            mkdir -p /var/log/tapriwala
+            exec > >(tee -a /var/log/tapriwala/deploy-backend.log) 2>&1
+
+            # A non-interactive SSH login does not load nvm; harmless without it.
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
+            step() { echo; echo "=== [$(date '+%F %T')] $* ==="; }
+
+            cd "$APP_DIR"
+
+            # One deploy at a time on this folder.
+            exec 9>/tmp/deploy-backend.lock
+            flock -n 9 || { echo "!!! Another backend deploy is running. Try again shortly."; exit 1; }
+
+            OLD=$(git rev-parse HEAD)
+            STAGE=fetch
+            REINSTALLED=no
+
+            rollback() {
+              local code=$?
+              [ "$code" -eq 0 ] && return
+              echo
+              echo "!!! DEPLOY FAILED during: $STAGE (exit code $code)"
+              echo "!!! Putting the server back on $(git log -1 --format='%h %s' "$OLD")"
+              git reset --hard "$OLD" || true
+              if [ -d "$BUILD_DIR.prev" ]; then rm -rf "$BUILD_DIR"; mv "$BUILD_DIR.prev" "$BUILD_DIR"; fi
+              if [ "$REINSTALLED" = yes ] && [ -d node_modules.prev ]; then
+                rm -rf node_modules; mv node_modules.prev node_modules
+              fi
+              # Only restart if the new version was already started.
+              if [ "$STAGE" = restart ] || [ "$STAGE" = health ]; then
+                pm2 restart "$PM2_NAME" --update-env || true
+              fi
+              echo "--- last 40 lines of pm2 logs for $PM2_NAME ---"
+              pm2 logs "$PM2_NAME" --lines 40 --nostream || true
+              exit "$code"
+            }
+            trap rollback EXIT
+
+            step "1/5 Fetch main from GitHub"
+            git fetch origin main
+            DIRTY=$(git status --short --untracked-files=no)
+            if [ -n "$DIRTY" ]; then
+              echo "These files were edited on the server and will be replaced by GitHub's copy:"
+              echo "$DIRTY"
+            fi
+            git reset --hard origin/main
+            echo "Was: $(git log -1 --format='%h %s' "$OLD")"
+            echo "Now: $(git log -1 --format='%h %s' HEAD)"
+
+            step "2/5 Install packages"
+            STAGE=install
+            if [ ! -d node_modules ] || ! git diff --quiet "$OLD" HEAD -- package-lock.json; then
+              echo "package-lock.json changed - running npm ci"
+              rm -rf node_modules.prev
+              [ -d node_modules ] && mv node_modules node_modules.prev
+              REINSTALLED=yes
+              npm ci
+            else
+              echo "package-lock.json unchanged - skipping npm ci"
+            fi
+
+            step "3/5 Build"
+            STAGE=build
+            rm -rf "$BUILD_DIR.prev"
+            [ -d "$BUILD_DIR" ] && cp -a "$BUILD_DIR" "$BUILD_DIR.prev"
+            npm run build
+
+            step "4/5 Restart $PM2_NAME"
+            STAGE=restart
+            pm2 restart "$PM2_NAME" --update-env
+
+            step "5/5 Health check"
+            STAGE=health
+            PORT=$(grep -E '^PORT=' .env 2>/dev/null | cut -d= -f2 | tr -d '"\r ' || true)
+            PORT=${PORT:-5010}
+            sleep 5
+            curl -fsS --retry 6 --retry-delay 5 --retry-all-errors \
+              "http://127.0.0.1:$PORT/api/v1/health" > /dev/null
+            echo "Backend answers on port $PORT"
+
+            rm -rf "$BUILD_DIR.prev" node_modules.prev
+            trap - EXIT
+            echo
+            echo "=== DEPLOYED $(git log -1 --format='%h %s') ==="
+            DEPLOY

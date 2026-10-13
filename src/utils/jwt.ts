@@ -11,14 +11,21 @@ export interface JwtPayload {
   name: string;
 }
 
+/** HMAC-SHA256 with the shared secret — the only algorithm this API signs or accepts. */
+const JWT_ALGORITHM = 'HS256' as const;
+
 export function signToken(payload: JwtPayload): string {
-  const options: SignOptions = { expiresIn: env.jwtExpiresIn as SignOptions['expiresIn'] };
+  const options: SignOptions = {
+    algorithm: JWT_ALGORITHM,
+    expiresIn: env.jwtExpiresIn as SignOptions['expiresIn'],
+  };
   return jwt.sign(payload, env.jwtSecret, options);
 }
 
 export function verifyToken(token: string): JwtPayload {
   try {
-    const decoded = jwt.verify(token, env.jwtSecret);
+    // Pinned, so a token can never choose its own algorithm.
+    const decoded = jwt.verify(token, env.jwtSecret, { algorithms: [JWT_ALGORITHM] });
     if (typeof decoded === 'string') {
       throw ApiError.unauthorized('Malformed token');
     }

@@ -9,6 +9,8 @@ export { objectIdParam, paginationQuery, dateRangeQuery } from './common.validat
 
 export { loginValidation, createUserValidation, updateUserValidation } from './auth.validator.js';
 
+export { listAuditValidation } from './audit.validator.js';
+
 export {
   createTableValidation,
   updateTableValidation,

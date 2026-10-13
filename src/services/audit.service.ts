@@ -51,11 +51,6 @@ export async function record(input: AuditInput): Promise<void> {
   }
 }
 
-/** Fire-and-forget variant for high-frequency, low-stakes events. */
-export function recordAsync(input: AuditInput): void {
-  void record(input);
-}
-
 export interface AuditQuery {
   entityType?: AuditEntity;
   entityId?: string;
@@ -138,4 +133,4 @@ async function withProductNames<T extends { before?: unknown; after?: unknown; m
   });
 }
 
-export default { record, recordAsync, list };
+export default { record, list };

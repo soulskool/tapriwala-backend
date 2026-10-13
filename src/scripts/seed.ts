@@ -86,9 +86,29 @@ function assertEveryRoleSeeded(): void {
   }
 }
 
+/**
+ * True when MONGO_URI points at this machine. NODE_ENV alone is not enough of
+ * a guard: a laptop .env with NODE_ENV=development and a copied production
+ * MONGO_URI would otherwise wipe the live café with one command.
+ */
+function isLocalDatabase(uri: string): boolean {
+  const match = /^mongodb(?:\+srv)?:\/\/(?:[^@/]*@)?([^/?]+)/.exec(uri);
+  const hosts = (match?.[1] ?? '').split(',').map((host) => host.replace(/:\d+$/, ''));
+  return (
+    hosts.length > 0 &&
+    hosts.every((host) => ['localhost', '127.0.0.1', '::1', '[::1]', 'mongo'].includes(host))
+  );
+}
+
 async function reset(): Promise<void> {
   if (env.isProduction) {
     throw new Error('Refusing to reset data with NODE_ENV=production');
+  }
+  if (!isLocalDatabase(env.mongoUri) && process.env.ALLOW_REMOTE_RESET !== 'true') {
+    throw new Error(
+      'Refusing to reset a database that is not on this machine. MONGO_URI points at a remote ' +
+        'host. Set ALLOW_REMOTE_RESET=true for this one command if you really mean it.',
+    );
   }
   logger.warn('Resetting operational collections');
   // BillingExport and AuditLog must go with the counters: bill numbers are a
@@ -146,7 +166,12 @@ async function seedUsers(): Promise<void> {
       role: user.role,
       pinHash: await hashPin(user.pin),
     });
-    logger.info(`Created ${user.role}: ${user.name} (${user.phone} / PIN ${user.pin})`);
+    logger.info(`Created ${user.role}: ${user.name} (${user.phone})`);
+    // The PIN goes to the terminal of whoever ran the seed, never into the
+    // log files, which outlive the session and get copied around.
+    process.stdout.write(
+      `    PIN for ${user.phone}: ${user.pin}  <- change it before going live\n`,
+    );
   }
 }
 

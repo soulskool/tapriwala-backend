@@ -4,6 +4,7 @@ import rateLimit, { ipKeyGenerator, type Options } from 'express-rate-limit';
 import { ERROR_CODES, HTTP_STATUS } from '../config/constants.js';
 import { env } from '../config/env.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
+import { tokenFromRequest } from '../utils/authToken.js';
 import { verifyToken } from '../utils/jwt.js';
 import { logger } from '../utils/logger.js';
 
@@ -45,10 +46,7 @@ const ipKey = (req: { ip?: string | undefined }): string =>
  * still gets a staff bucket, and `authenticate` still turns it away.
  */
 function staffId(req: Request): string | null {
-  const header = req.headers.authorization;
-  const token = header?.startsWith('Bearer ')
-    ? header.slice(7).trim()
-    : (req.cookies as Record<string, string> | undefined)?.[env.cookieName];
+  const token = tokenFromRequest(req);
   if (!token) return null;
   try {
     return verifyToken(token).sub;

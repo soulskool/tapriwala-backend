@@ -10,12 +10,13 @@ import { sendSuccess, sendNoContent } from '../utils/ApiResponse.js';
  * this value, so an XSS bug cannot walk off with a shift's session the way it
  * could with a token in `localStorage`.
  *
- * `secure` is forced on whenever SameSite is `none`, because browsers drop a
- * `None` cookie that is not also `Secure`.
+ * `secure` is on whenever the deployment is HTTPS (see `env.cookieSecure`), and
+ * always when SameSite is `none`, because browsers drop a `None` cookie that is
+ * not also `Secure`.
  */
 const cookieOptions = {
   httpOnly: true,
-  secure: env.isProduction || env.cookieSameSite === 'none',
+  secure: env.cookieSecure || env.cookieSameSite === 'none',
   sameSite: env.cookieSameSite,
   maxAge: 12 * 60 * 60 * 1000,
   path: '/',

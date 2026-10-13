@@ -8,8 +8,10 @@ import { env } from './config/env.js';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler.js';
 import { apiLimiter } from './middlewares/rateLimiter.js';
 import { requestLogger } from './middlewares/requestLogger.js';
+import { stripMongoOperators } from './middlewares/sanitizeInput.js';
 import routes from './routes/index.js';
 import { getStorageDriver } from './services/storage/index.js';
+import { ApiError } from './utils/ApiError.js';
 
 /**
  * Express application.
@@ -21,8 +23,9 @@ export function createApp(): Express {
   const app = express();
 
   // Behind nginx/Caddy on the VPS — needed for correct client IPs in rate
-  // limiting and audit logs.
-  if (env.isProduction) app.set('trust proxy', 1);
+  // limiting and audit logs. A hop count, never `true`: `true` would believe
+  // any X-Forwarded-For a client invents and let it pick its own rate bucket.
+  if (env.trustProxy > 0) app.set('trust proxy', env.trustProxy);
 
   app.disable('x-powered-by');
 
@@ -43,15 +46,20 @@ export function createApp(): Express {
           callback(null, true);
           return;
         }
-        callback(new Error(`Origin ${origin} is not allowed by CORS`));
+        // A 403 in the standard envelope, not a 500: a foreign origin is a
+        // refused request, not a server fault. Rejecting here also stops a
+        // cross-site form POST before it reaches any route.
+        callback(ApiError.forbidden(`Origin ${origin} is not allowed`));
       },
       credentials: true,
+      methods: ['GET', 'HEAD', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
       exposedHeaders: ['x-request-id'],
     }),
   );
 
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+  app.use(stripMongoOperators);
   app.use(cookieParser());
 
   // Single request log: method, path, status, duration, requestId and actor.
