@@ -125,3 +125,9 @@ Bunny access key. `.env.example` documents every variable without values.
   spread it — an object breaks every frontend form.
 - **One process only.** `ecosystem.config.cjs` pins `instances: 1` because
   Socket.IO rooms are in-process memory.
+- **A push to `main` is a production deploy** (`.github/workflows/deploy.yml`),
+  including a push that only edits the workflow. See "Production and deploys"
+  in `../CLAUDE.md`.
+- **PM2's `↺` count is lifetime, not current.** 900+ restarts on
+  `tapriwala-backend` were an old `.env` typo crash loop; uptime is the live
+  signal. `pm2 reset tapriwala-backend` zeroes it.

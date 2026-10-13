@@ -286,6 +286,10 @@ POST  /billing/exports/:id/retry
 
 ```
 GET   /admin/overview            whole floor in one read-only payload
+GET   /admin/sales/daily         ?from&to  takings per café day, paid bills only
+GET   /admin/sales/items         ?from&to&period=day|month  per item: qty, amount,
+                                 price variants, category, per-period breakdown
+GET   /admin/sales/items/xlsx    the same report as an Excel workbook
 GET   /admin/audit               the scrutiny trail
 GET   /admin/users  ·  POST /admin/users  ·  PATCH /admin/users/:id
 ```
@@ -391,10 +395,33 @@ the upload path when the menu carries real photos.
 
 ## Deployment (single VPS)
 
+**Pushing `main` deploys automatically.** `.github/workflows/deploy.yml` SSHes
+into the VPS and, in `/var/www/tapriwala/tapriwala-backend`, runs fetch + reset
+to `origin/main`, `npm ci` (only when `package-lock.json` changed),
+`npm run build`, `pm2 restart tapriwala-backend`, then `GET /api/v1/health` on
+the `PORT` from `.env`. Any failure restores the previous commit, `dist/` and
+`node_modules` and restarts on them; the run goes red with the failing step
+and the last PM2 log lines. Each run is also appended to
+`/var/log/tapriwala/deploy-backend.log`. GitHub secrets: `VPS_HOST`,
+`VPS_USER`, `VPS_PORT`, `VPS_SSH_KEY`. The workflow never reads or writes
+`.env` except to look up `PORT`.
+
+Manual fallback, and first-time setup:
+
 ```bash
 npm ci
 npm run build
-pm2 start ecosystem.config.cjs && pm2 save && pm2 startup
+pm2 start ecosystem.config.cjs && pm2 save && pm2 startup   # first time only
+pm2 restart tapriwala-backend                               # every later deploy
+```
+
+The live server's `.env` must carry `NODE_ENV=production` and `TRUST_PROXY=1`.
+Check a new `.env` against production rules **without restarting** before you
+flip it — `assertEnv()` refuses to boot on a bad value, and PM2 then restarts
+the process in a tight loop:
+
+```bash
+NODE_ENV=production node --input-type=module -e "const m = await import('./dist/config/env.js'); m.assertEnv(); console.log('env OK')"
 ```
 
 **`npm ci`, never `npm install` — on the server this is not a preference.**
@@ -411,8 +438,11 @@ this process's memory, so a second worker would mean a kitchen tablet connected
 to worker B never hears an order placed through worker A. Going multi-instance
 requires the Socket.IO Redis adapter — a Phase 2 decision, not a config tweak.
 
-Put nginx or Caddy in front for TLS. `trust proxy` is already set in production
-so client IPs stay correct for rate limiting and the audit log.
+Put nginx or Caddy in front for TLS. `TRUST_PROXY` (default 1 in production)
+sets Express's `trust proxy` hop count so client IPs stay correct for rate
+limiting and the audit log. Without it every guest shares nginx's address —
+one rate-limit bucket for the whole café — and express-rate-limit logs
+`ERR_ERL_UNEXPECTED_X_FORWARDED_FOR` on every boot.
 
 ---
 
