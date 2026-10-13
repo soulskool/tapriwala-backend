@@ -47,6 +47,10 @@ jobs:
             APP_DIR=/var/www/tapriwala/tapriwala-backend
             PM2_NAME=tapriwala-backend
             BUILD_DIR=dist
+            # Backups live OUTSIDE the project. Inside it, tsconfig's "**/*.ts"
+            # made next build type-check a second copy of every library in the
+            # moved-aside node_modules (2026-10-13: out of memory, then errors).
+            BACKUP=/var/www/tapriwala/.deploy-backup/$PM2_NAME
 
             # Every run is kept on the server as well as in GitHub.
             mkdir -p /var/log/tapriwala
@@ -58,6 +62,7 @@ jobs:
 
             step() { echo; echo "=== [$(date '+%F %T')] $* ==="; }
 
+            mkdir -p "$BACKUP"
             cd "$APP_DIR"
 
             # One deploy at a time on this folder.
@@ -75,9 +80,9 @@ jobs:
               echo "!!! DEPLOY FAILED during: $STAGE (exit code $code)"
               echo "!!! Putting the server back on $(git log -1 --format='%h %s' "$OLD")"
               git reset --hard "$OLD" || true
-              if [ -d "$BUILD_DIR.prev" ]; then rm -rf "$BUILD_DIR"; mv "$BUILD_DIR.prev" "$BUILD_DIR"; fi
-              if [ "$REINSTALLED" = yes ] && [ -d node_modules.prev ]; then
-                rm -rf node_modules; mv node_modules.prev node_modules
+              if [ -d "$BACKUP/build" ]; then rm -rf "$BUILD_DIR"; mv "$BACKUP/build" "$BUILD_DIR"; fi
+              if [ "$REINSTALLED" = yes ] && [ -d "$BACKUP/node_modules" ]; then
+                rm -rf node_modules; mv "$BACKUP/node_modules" node_modules
               fi
               # Only restart if the new version was already started.
               if [ "$STAGE" = restart ] || [ "$STAGE" = health ]; then
@@ -104,8 +109,8 @@ jobs:
             STAGE=install
             if [ ! -d node_modules ] || ! git diff --quiet "$OLD" HEAD -- package-lock.json; then
               echo "package-lock.json changed - running npm ci"
-              rm -rf node_modules.prev
-              [ -d node_modules ] && mv node_modules node_modules.prev
+              rm -rf "$BACKUP/node_modules"
+              [ -d node_modules ] && mv node_modules "$BACKUP/node_modules"
               REINSTALLED=yes
               npm ci
             else
@@ -114,8 +119,8 @@ jobs:
 
             step "3/5 Build"
             STAGE=build
-            rm -rf "$BUILD_DIR.prev"
-            [ -d "$BUILD_DIR" ] && cp -a "$BUILD_DIR" "$BUILD_DIR.prev"
+            rm -rf "$BACKUP/build"
+            [ -d "$BUILD_DIR" ] && cp -a "$BUILD_DIR" "$BACKUP/build"
             npm run build
 
             step "4/5 Restart $PM2_NAME"
@@ -131,7 +136,7 @@ jobs:
               "http://127.0.0.1:$PORT/api/v1/health" > /dev/null
             echo "Backend answers on port $PORT"
 
-            rm -rf "$BUILD_DIR.prev" node_modules.prev
+            rm -rf "$BACKUP/build" "$BACKUP/node_modules"
             trap - EXIT
             echo
             echo "=== DEPLOYED $(git log -1 --format='%h %s') ==="

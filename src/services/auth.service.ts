@@ -145,39 +145,6 @@ export async function updateUser(
   return user;
 }
 
-/**
- * The PINs the seed script creates, which are printed in the README and in
- * every seed run. An account still using one is an open door.
- */
-const PUBLISHED_SEED_PINS: Record<string, string> = {
-  '9999999999': '1234',
-  '9000000001': '1111',
-  '9000000002': '2222',
-  '9000000003': '3333',
-};
-
-/**
- * Names every active account that still has its published seed PIN.
- *
- * Read-only and called once after boot: it only logs, so a café that has not
- * changed its PINs yet keeps working, but the server log says so every start.
- */
-export async function findAccountsWithSeedPins(): Promise<string[]> {
-  const users = await User.find({
-    phone: { $in: Object.keys(PUBLISHED_SEED_PINS) },
-    isActive: true,
-  }).select('+pinHash name phone role');
-
-  const exposed: string[] = [];
-  for (const user of users) {
-    const seedPin = PUBLISHED_SEED_PINS[user.phone];
-    if (seedPin && (await user.comparePin(seedPin))) {
-      exposed.push(`${user.name} (${user.role}, ${user.phone})`);
-    }
-  }
-  return exposed;
-}
-
 export async function listUsers(includeInactive = false): Promise<UserDocument[]> {
   const query = includeInactive ? {} : { isActive: true };
   return User.find(query).sort({ role: 1, name: 1 });
