@@ -70,8 +70,9 @@ describe('access control', () => {
     const users = await h.api('GET', '/admin/users', { token: h.tokens.admin });
     const waiter = users.data.find((user: any) => user.role === 'waiter');
 
+    // Staff accounts are changed by a super admin only.
     await h.api('PATCH', `/admin/users/${waiter.id}`, {
-      token: h.tokens.admin,
+      token: h.tokens.superAdmin,
       body: { isActive: false },
     });
 
@@ -79,7 +80,7 @@ describe('access control', () => {
     expect((await h.api('GET', '/tables', { token: h.tokens.waiter })).status).toBe(403);
 
     await h.api('PATCH', `/admin/users/${waiter.id}`, {
-      token: h.tokens.admin,
+      token: h.tokens.superAdmin,
       body: { isActive: true },
     });
     expect((await h.api('GET', '/tables', { token: h.tokens.waiter })).status).toBe(200);

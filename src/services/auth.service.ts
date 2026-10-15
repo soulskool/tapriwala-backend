@@ -1,6 +1,12 @@
 import bcrypt from 'bcryptjs';
 
-import { AUDIT_ACTION, AUDIT_ENTITY, ROLES, type Role } from '../config/constants.js';
+import {
+  AUDIT_ACTION,
+  AUDIT_ENTITY,
+  ROLES,
+  UNDEACTIVATABLE_ROLES,
+  type Role,
+} from '../config/constants.js';
 import { User, hashPin, type UserDocument } from '../models/User.js';
 import { ApiError } from '../utils/ApiError.js';
 import { compact } from '../utils/helpers.js';
@@ -107,11 +113,35 @@ export async function updateUser(
   const user = await User.findById(userId);
   if (!user) throw ApiError.notFound('User not found');
 
-  // An admin is never switched off, by anyone — themselves included. Admins
-  // are the only ones who can reactivate an account, so a deactivated admin is
-  // how the shop locks itself out of its own Staff page.
-  if (user.role === ROLES.ADMIN && payload.isActive === false) {
-    throw ApiError.forbidden('An admin account cannot be deactivated');
+  // Judged on the account as it will be after this save, not as it is now, so
+  // "make this waiter an admin and switch them off" in one request is caught
+  // as surely as switching off an existing admin.
+  const nextRole = payload.role ?? user.role;
+  const nextActive = payload.isActive ?? user.isActive;
+
+  // An admin or super admin is never switched off, by anyone — themselves
+  // included. Staff management sits behind these roles, so a deactivated one
+  // is how the shop locks itself out of its own Staff page. To retire one,
+  // change the role in the same request or an earlier one.
+  if (UNDEACTIVATABLE_ROLES.includes(nextRole) && !nextActive) {
+    throw ApiError.forbidden(
+      `An ${nextRole === ROLES.SUPER_ADMIN ? 'super admin' : 'admin'} account cannot be deactivated`,
+    );
+  }
+
+  // Taking the role away from the last super admin would leave nobody able to
+  // manage staff at all, with no way back short of editing the database.
+  if (user.role === ROLES.SUPER_ADMIN && nextRole !== ROLES.SUPER_ADMIN) {
+    const others = await User.countDocuments({
+      _id: { $ne: user._id },
+      role: ROLES.SUPER_ADMIN,
+      isActive: true,
+    });
+    if (others === 0) {
+      throw ApiError.invalidState(
+        'This is the only super admin. Make someone else super admin before changing this role.',
+      );
+    }
   }
 
   const before = { name: user.name, phone: user.phone, role: user.role, isActive: user.isActive };

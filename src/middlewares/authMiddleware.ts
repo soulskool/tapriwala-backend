@@ -1,6 +1,6 @@
 import type { RequestHandler } from 'express';
 
-import { ROLES, type Role } from '../config/constants.js';
+import { FULL_ACCESS_ROLES, READ_ONLY_ROLES, type Role } from '../config/constants.js';
 import { TableMaster, TableSession, User } from '../models/index.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -25,13 +25,31 @@ export const authenticate: RequestHandler = asyncHandler(async (req, _res, next)
   if (!user) throw ApiError.unauthorized('Account no longer exists');
   if (!user.isActive) throw ApiError.forbidden('Account is deactivated');
 
+  // The whole of the view-only rule, in one place. Checked here rather than in
+  // `authorize` because some writes sit behind `authenticate` alone, and a
+  // route added next year must be read-only for these roles without anybody
+  // remembering to say so.
+  if (READ_ONLY_ROLES.includes(user.role) && !isSafeMethod(req.method)) {
+    throw ApiError.forbidden('This account is view-only and cannot change anything');
+  }
+
   req.user = { id: String(user._id), role: user.role, name: user.name };
   next();
 });
 
+/** A request that reads and never writes. */
+function isSafeMethod(method: string): boolean {
+  return method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
+}
+
 /**
- * Restricts a route to specific roles. Admin passes every check by design —
- * ownership needs to be able to unstick the floor without role-swapping.
+ * Restricts a route to specific roles. Admin and super admin pass every check
+ * by design — ownership needs to be able to unstick the floor without
+ * role-swapping.
+ *
+ * A view-only admin passes on reads only: it sees every screen an admin sees.
+ * Writes never reach this far for it (`authenticate` already refused them);
+ * the method test is repeated here so this function is safe on its own.
  *
  *   router.post('/close', authenticate, authorize(ROLES.BILLING), handler)
  */
@@ -42,7 +60,33 @@ export const authorize =
       next(ApiError.unauthorized('Authentication required'));
       return;
     }
-    if (req.user.role === ROLES.ADMIN || allowed.includes(req.user.role)) {
+    const { role } = req.user;
+    if (FULL_ACCESS_ROLES.includes(role) || allowed.includes(role)) {
+      next();
+      return;
+    }
+    if (READ_ONLY_ROLES.includes(role) && isSafeMethod(req.method)) {
+      next();
+      return;
+    }
+    next(ApiError.forbidden(`This action requires one of: ${allowed.join(', ')}`));
+  };
+
+/**
+ * Restricts a route to exactly these roles — no admin bypass, no read-only
+ * pass.
+ *
+ * For the few actions a plain admin must not take, which today is only
+ * creating and editing staff accounts (super admin).
+ */
+export const requireRole =
+  (...allowed: Role[]): RequestHandler =>
+  (req, _res, next) => {
+    if (!req.user) {
+      next(ApiError.unauthorized('Authentication required'));
+      return;
+    }
+    if (allowed.includes(req.user.role)) {
       next();
       return;
     }

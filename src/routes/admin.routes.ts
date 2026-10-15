@@ -1,8 +1,8 @@
 import { Router } from 'express';
 
-import { ROLES } from '../config/constants.js';
+import { ROLES, STAFF_MANAGER_ROLES } from '../config/constants.js';
 import * as adminController from '../controllers/admin.controller.js';
-import { authenticate, authorize } from '../middlewares/authMiddleware.js';
+import { authenticate, authorize, requireRole } from '../middlewares/authMiddleware.js';
 import { validate } from '../middlewares/validate.js';
 import {
   createUserValidation,
@@ -44,10 +44,24 @@ router.get(
   adminController.listAudit,
 );
 
+/**
+ * Staff accounts.
+ *
+ * Every admin can read the list; only a super admin can change it. That
+ * includes PINs, roles (making someone super admin, or taking it back) and
+ * switching an account off. `requireRole` has no admin bypass, which is the
+ * point of using it here instead of `authorize`.
+ */
 router.get('/users', adminController.listUsers);
-router.post('/users', validate(createUserValidation), adminController.createUser);
+router.post(
+  '/users',
+  requireRole(...STAFF_MANAGER_ROLES),
+  validate(createUserValidation),
+  adminController.createUser,
+);
 router.patch(
   '/users/:id',
+  requireRole(...STAFF_MANAGER_ROLES),
   validate([objectIdParam('id', 'User id'), ...updateUserValidation]),
   adminController.updateUser,
 );

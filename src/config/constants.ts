@@ -68,10 +68,51 @@ export const ROLES = {
   KITCHEN: 'kitchen',
   BILLING: 'billing',
   ADMIN: 'admin',
+  /** An admin who can also create and edit staff accounts. See STAFF_MANAGER_ROLES. */
+  SUPER_ADMIN: 'super_admin',
+  /** Sees every screen an admin sees and can change nothing. See READ_ONLY_ROLES. */
+  ADMIN_VIEWER: 'admin_viewer',
 } as const;
 
 export type Role = (typeof ROLES)[keyof typeof ROLES];
 export const ROLE_VALUES = Object.values(ROLES) as Role[];
+
+/**
+ * Roles that pass every `authorize()` check — ownership must be able to unstick
+ * the floor without role-swapping. A super admin is an admin in every respect;
+ * the one thing it adds is staff management.
+ */
+export const FULL_ACCESS_ROLES: Role[] = [ROLES.ADMIN, ROLES.SUPER_ADMIN];
+
+/**
+ * The only roles allowed to create or change a staff account.
+ *
+ * Deliberately not covered by the admin bypass: a plain admin reads the Staff
+ * page but cannot edit it. `requireRole()` enforces this, not `authorize()`.
+ */
+export const STAFF_MANAGER_ROLES: Role[] = [ROLES.SUPER_ADMIN];
+
+/**
+ * Roles that may read everything an admin reads and write nothing.
+ *
+ * Enforced once, in `authenticate`, by HTTP method rather than route by route,
+ * so a route added later is read-only for these roles by default instead of
+ * by someone remembering to exclude them.
+ */
+export const READ_ONLY_ROLES: Role[] = [ROLES.ADMIN_VIEWER];
+
+/** Roles that watch the whole café, and so hear every staff broadcast. */
+export const OVERSIGHT_ROLES: Role[] = [...FULL_ACCESS_ROLES, ...READ_ONLY_ROLES];
+
+/**
+ * Roles whose account is never switched off while it holds the role.
+ *
+ * Staff management lives behind these, so a deactivated one is how the shop
+ * locks itself out of its own Staff page. To retire one, change the role
+ * first (which keeps at least one super admin — see auth.service), then
+ * deactivate.
+ */
+export const UNDEACTIVATABLE_ROLES: Role[] = [ROLES.ADMIN, ROLES.SUPER_ADMIN];
 
 /** Pseudo-actor used when an action originates from a tokenless customer QR session. */
 export const CUSTOMER_ACTOR = 'customer' as const;
@@ -372,7 +413,12 @@ export const SOCKET_ROOMS = {
 } as const;
 
 /** Staff rooms that receive "something changed on the floor" traffic. */
-export const STAFF_ROLE_ROOMS: Role[] = [ROLES.WAITER, ROLES.KITCHEN, ROLES.BILLING, ROLES.ADMIN];
+export const STAFF_ROLE_ROOMS: Role[] = [
+  ROLES.WAITER,
+  ROLES.KITCHEN,
+  ROLES.BILLING,
+  ...OVERSIGHT_ROLES,
+];
 
 /**
  * The café's day, for "sales on 8 October".

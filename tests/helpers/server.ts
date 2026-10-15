@@ -105,7 +105,16 @@ export const TEST_USERS = {
   waiter: { name: 'Test Waiter', phone: '9000000001', role: ROLES.WAITER, pin: '1111' },
   kitchen: { name: 'Test Kitchen', phone: '9000000002', role: ROLES.KITCHEN, pin: '2222' },
   billing: { name: 'Test Billing', phone: '9000000003', role: ROLES.BILLING, pin: '3333' },
+  superAdmin: {
+    name: 'Test Super Admin',
+    phone: '9000000007',
+    role: ROLES.SUPER_ADMIN,
+    pin: '7777',
+  },
+  viewer: { name: 'Test Viewer', phone: '9000000008', role: ROLES.ADMIN_VIEWER, pin: '8888' },
 } as const;
+
+export type TestUserKey = keyof typeof TEST_USERS;
 
 /** Minimal fixture set: enough tables to test transfers, enough menu to test billing. */
 export async function seedFixtures(): Promise<void> {
@@ -221,7 +230,7 @@ export function makeApi(baseUrl: string) {
   };
 }
 
-/** Logs in all four roles and returns their tokens. */
+/** Logs in every test user — one per role — and returns their tokens. */
 export async function loginAll(api: ReturnType<typeof makeApi>) {
   const tokens: Record<string, string> = {};
   for (const [key, user] of Object.entries(TEST_USERS)) {
@@ -230,10 +239,5 @@ export async function loginAll(api: ReturnType<typeof makeApi>) {
     });
     tokens[key] = result.data.token as string;
   }
-  return tokens as unknown as {
-    admin: string;
-    waiter: string;
-    kitchen: string;
-    billing: string;
-  };
+  return tokens as Record<TestUserKey, string>;
 }

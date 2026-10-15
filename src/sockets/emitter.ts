@@ -1,7 +1,7 @@
 import type { Server } from 'socket.io';
 
 import {
-  ROLES,
+  OVERSIGHT_ROLES,
   SOCKET_EVENTS,
   SOCKET_ROOMS,
   STAFF_ROLE_ROOMS,
@@ -58,9 +58,12 @@ export function emitToAll(event: SocketEvent, payload: unknown): void {
   io.emit(event, payload);
 }
 
-/** A specific set of staff roles (admin is added automatically — ops visibility). */
+/**
+ * A specific set of staff roles. Every admin role (admin, super admin, view
+ * only) is added automatically — ops visibility.
+ */
 export function emitToRoles(roles: Role[], event: SocketEvent, payload: unknown): void {
-  const unique = Array.from(new Set<Role>([...roles, ROLES.ADMIN]));
+  const unique = Array.from(new Set<Role>([...roles, ...OVERSIGHT_ROLES]));
   emitTo(unique.map(SOCKET_ROOMS.role), event, payload);
 }
 
@@ -89,7 +92,8 @@ export function broadcast(
 
   const roles = target.roles ?? STAFF_ROLE_ROOMS;
   roles.forEach((role) => rooms.add(SOCKET_ROOMS.role(role)));
-  if (!roles.includes('admin')) rooms.add(SOCKET_ROOMS.role('admin'));
+  // Every admin role watches the whole café, whoever the event was aimed at.
+  OVERSIGHT_ROLES.forEach((role) => rooms.add(SOCKET_ROOMS.role(role)));
 
   if (target.tableId) rooms.add(SOCKET_ROOMS.table(target.tableId));
   if (target.sessionId) rooms.add(SOCKET_ROOMS.session(target.sessionId));

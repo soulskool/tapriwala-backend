@@ -65,12 +65,14 @@ describe('user management', () => {
     const roles = new Set(users.data.map((user: any) => user.role));
 
     // If a new role is ever added, the seed must grow with it.
-    expect(roles).toEqual(new Set(['admin', 'waiter', 'kitchen', 'billing']));
+    expect(roles).toEqual(
+      new Set(['admin', 'waiter', 'kitchen', 'billing', 'super_admin', 'admin_viewer']),
+    );
   });
 
   it('creates a new staff member who can immediately log in', async () => {
     await h.api('POST', '/admin/users', {
-      token: h.tokens.admin,
+      token: h.tokens.superAdmin,
       body: { name: 'New Waiter', phone: '9000000055', role: 'waiter', pin: '5555' },
     });
 
@@ -82,7 +84,7 @@ describe('user management', () => {
 
   it('refuses a duplicate phone number', async () => {
     const result = await h.api('POST', '/admin/users', {
-      token: h.tokens.admin,
+      token: h.tokens.superAdmin,
       body: { name: 'Clash', phone: '9000000055', role: 'waiter', pin: '6666' },
     });
     expect(result.status).toBe(409);
@@ -90,20 +92,20 @@ describe('user management', () => {
 
   it('enforces a 4 digit numeric PIN', async () => {
     const result = await h.api('POST', '/admin/users', {
-      token: h.tokens.admin,
+      token: h.tokens.superAdmin,
       body: { name: 'Bad Pin', phone: '9000000056', role: 'waiter', pin: 'abcd' },
     });
     expect(result.status).toBe(400);
   });
 
   it('never deactivates an admin, not even the admin themselves', async () => {
-    // Only an admin can reactivate anyone, so this is how a shop locks itself
-    // out of its own Staff page.
+    // Staff management sits behind the admin roles, so a deactivated one is
+    // how a shop locks itself out of its own Staff page.
     const users = await h.api('GET', '/admin/users', { token: h.tokens.admin });
     const admin = users.data.find((user: any) => user.role === 'admin');
 
     const result = await h.api('PATCH', `/admin/users/${admin.id}`, {
-      token: h.tokens.admin,
+      token: h.tokens.superAdmin,
       body: { isActive: false },
     });
     expect(result.status).toBe(403);
@@ -119,7 +121,7 @@ describe('user management', () => {
     const waiter = users.data.find((user: any) => user.phone === '9000000055');
 
     const off = await h.api('PATCH', `/admin/users/${waiter.id}`, {
-      token: h.tokens.admin,
+      token: h.tokens.superAdmin,
       body: { isActive: false },
     });
     expect(off.success).toBe(true);
@@ -129,7 +131,7 @@ describe('user management', () => {
     expect(refused.status).toBe(403);
 
     await h.api('PATCH', `/admin/users/${waiter.id}`, {
-      token: h.tokens.admin,
+      token: h.tokens.superAdmin,
       body: { isActive: true },
     });
     const back = await h.api('POST', '/auth/login', { body: { phone: '9000000055', pin: '5555' } });

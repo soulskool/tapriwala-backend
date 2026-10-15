@@ -5,6 +5,7 @@ import {
   startTestServer,
   type ApiResult,
   type TestContext,
+  type TestUserKey,
 } from './server.js';
 
 /**
@@ -22,7 +23,7 @@ import {
 export interface Harness {
   ctx: TestContext;
   api: ReturnType<typeof makeApi>;
-  tokens: { admin: string; waiter: string; kitchen: string; billing: string };
+  tokens: Record<TestUserKey, string>;
   /** Table master rows, keyed by code — saves a lookup in every test. */
   tables: Record<string, { _id: string; code: string }>;
   close: () => Promise<void>;

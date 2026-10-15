@@ -69,10 +69,20 @@ const TABLES = [
  * loudly rather than leaving that role untestable.
  */
 const USERS = [
-  { name: 'Cafe Admin', phone: env.seedAdminPhone, role: ROLES.ADMIN, pin: env.seedAdminPin },
+  // The owner's own login, from .env, is the super admin: on a fresh database
+  // somebody has to be able to create the rest of the staff. On a database
+  // that already has this phone, the seed changes nothing (see seedUsers).
+  {
+    name: 'Cafe Admin',
+    phone: env.seedAdminPhone,
+    role: ROLES.SUPER_ADMIN,
+    pin: env.seedAdminPin,
+  },
   { name: 'Waiter One', phone: '9000000001', role: ROLES.WAITER, pin: '1111' },
   { name: 'Kitchen Display', phone: '9000000002', role: ROLES.KITCHEN, pin: '2222' },
   { name: 'Billing Counter', phone: '9000000003', role: ROLES.BILLING, pin: '3333' },
+  { name: 'Manager', phone: '9000000004', role: ROLES.ADMIN, pin: '4444' },
+  { name: 'Owner View', phone: '9000000005', role: ROLES.ADMIN_VIEWER, pin: '5555' },
 ];
 
 function assertEveryRoleSeeded(): void {
