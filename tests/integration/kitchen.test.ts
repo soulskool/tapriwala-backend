@@ -281,3 +281,33 @@ describe('a closed table leaves nothing on the board', () => {
     expect(ready.data.rounds.some((round: any) => round.sessionId === nagSession)).toBe(false);
   });
 });
+
+describe('add-ons on the board', () => {
+  it('sends an add-on as its own ticket on the same session, so the board can group it', async () => {
+    // The KDS draws one card per table by grouping tickets on `sessionId`, with
+    // each round still its own section. That only works if an add-on stays a
+    // separate ticket, carries the table's session and is flagged as an add-on.
+    const first = await customerOrder(
+      h,
+      'M1',
+      [{ productCode: 'BEV001', quantity: 1 }],
+      'kitchen-addon-1',
+    );
+    const addOn = await customerOrder(
+      h,
+      'M1',
+      [{ productCode: 'SNK001', quantity: 1 }],
+      'kitchen-addon-2',
+    );
+    expect(addOn.data.sessionId).toBe(first.data.sessionId);
+
+    const queue = await h.api('GET', '/kitchen/queue', { token: h.tokens.kitchen });
+    const forTable = queue.data.tickets.filter((t: any) => t.sessionId === first.data.sessionId);
+
+    expect(forTable.map((t: any) => t.roundNumber)).toEqual([1, 2]);
+    expect(forTable.map((t: any) => t.isAddOn)).toEqual([false, true]);
+    expect(forTable.every((t: any) => t.tableCode === 'M1')).toBe(true);
+    // Two rounds, two dockets — the card prints each one on its own.
+    expect(new Set(forTable.map((t: any) => t.kotId)).size).toBe(2);
+  });
+});

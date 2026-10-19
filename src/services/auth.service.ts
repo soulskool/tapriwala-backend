@@ -125,7 +125,7 @@ export async function updateUser(
   // change the role in the same request or an earlier one.
   if (UNDEACTIVATABLE_ROLES.includes(nextRole) && !nextActive) {
     throw ApiError.forbidden(
-      `An ${nextRole === ROLES.SUPER_ADMIN ? 'super admin' : 'admin'} account cannot be deactivated`,
+      `An ${nextRole === ROLES.SUPER_ADMIN ? 'Admins' : 'admin'} account cannot be deactivated`,
     );
   }
 
@@ -139,7 +139,7 @@ export async function updateUser(
     });
     if (others === 0) {
       throw ApiError.invalidState(
-        'This is the only super admin. Make someone else super admin before changing this role.',
+        'This is the only Admins account. Make someone else Admins before changing this role.',
       );
     }
   }
