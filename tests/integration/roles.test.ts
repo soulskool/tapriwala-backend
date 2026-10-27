@@ -263,6 +263,8 @@ describe('view-only admin', () => {
       ['POST', `/sessions/${sessionId}/close`, { force: true }],
       ['POST', `/sessions/${sessionId}/transfer`, { toTableId: h.tables.V1!._id, reason: 'x' }],
       ['PATCH', `/sessions/${sessionId}/review`, { heldForReview: true, note: 'x' }],
+      ['POST', `/sessions/${sessionId}/move-bill`, { toTableId: h.tables.V1!._id }],
+      ['POST', `/sessions/${sessionId}/undo-bill-move`, {}],
       ['PATCH', `/rounds/${roundId}/items/${itemId}`, { status: 'ready' }],
       ['PATCH', `/rounds/${roundId}/status`, { status: 'ready' }],
       ['PATCH', `/products/${String(product!._id)}/availability`, { isAvailable: false }],
@@ -279,12 +281,22 @@ describe('view-only admin', () => {
           kitchenStation: 'Kitchen',
         },
       ],
-      ['POST', '/tables', { code: 'VW1', zone: 'Veranda', displayOrder: 1, seatingCapacity: 2 }],
+      [
+        'POST',
+        '/tables',
+        { code: 'VW1', zoneId: h.tables.V1!.zoneId, displayOrder: 1, seatingCapacity: 2 },
+      ],
       ['PATCH', `/tables/${h.tables.V1!._id}`, { seatingCapacity: 9 }],
+      ['DELETE', `/tables/${h.tables.V1!._id}`, {}],
+      ['DELETE', `/products/${String(product!._id)}`, {}],
+      ['POST', '/zones', { name: 'Rooftop' }],
+      ['PATCH', `/zones/${h.tables.V1!.zoneId}`, { name: 'Porch' }],
+      ['DELETE', `/zones/${h.tables.V1!.zoneId}`, {}],
       ['POST', '/service-requests', { tableId: h.tables.M2!._id, type: 'water' }],
       ['POST', `/billing/${sessionId}/export`, {}],
       ['POST', '/admin/users', { name: 'Nope', phone: '9000000066', role: 'waiter', pin: '6666' }],
       ['PATCH', `/admin/users/${waiter.id}`, { isActive: false }],
+      ['DELETE', `/admin/users/${waiter.id}`, {}],
     ];
 
     for (const [method, path, body] of writes) {

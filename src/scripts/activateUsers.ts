@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import { AUDIT_ACTION, AUDIT_ENTITY } from '../config/constants.js';
 import { connectDB, disconnectDB } from '../config/db.js';
 import { assertEnv } from '../config/env.js';
-import { User } from '../models/index.js';
+import { NOT_DELETED, User } from '../models/index.js';
 import * as auditService from '../services/audit.service.js';
 import { SYSTEM_ACTOR } from '../utils/actor.js';
 import { logger } from '../utils/logger.js';
@@ -22,7 +22,9 @@ async function main(): Promise<void> {
   assertEnv();
   await connectDB();
 
-  const inactive = await User.find({ isActive: false }).select('name phone role isActive');
+  const inactive = await User.find({ isActive: false, ...NOT_DELETED }).select(
+    'name phone role isActive',
+  );
   if (inactive.length === 0) {
     logger.info('Every account is already active');
   }

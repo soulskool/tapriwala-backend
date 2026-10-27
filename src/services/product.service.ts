@@ -5,10 +5,10 @@ import {
   type KitchenStation,
 } from '../config/constants.js';
 import { env } from '../config/env.js';
-import { ProductMaster, type ProductMasterDocument } from '../models/index.js';
+import { NOT_DELETED, ProductMaster, type ProductMasterDocument } from '../models/index.js';
 import { ApiError } from '../utils/ApiError.js';
 import { compact } from '../utils/helpers.js';
-import type { Actor } from '../utils/actor.js';
+import { actorSnapshot, type Actor } from '../utils/actor.js';
 import { emitToAll } from '../sockets/emitter.js';
 import * as auditService from './audit.service.js';
 import { removeImage, saveImage, type UploadInput } from './storage/index.js';
@@ -20,6 +20,10 @@ import { removeImage, saveImage, type UploadInput } from './storage/index.js';
  * is today's 86 list (comes back tomorrow), `isActive` is retirement. Only
  * `isActive: false` hides an item from admin screens; an 86'd item still needs
  * to be visible to staff so they can un-86 it.
+ *
+ * Delete (`remove`) is the admin Menu page's third switch: the item leaves
+ * every screen, including admin lists, and its code is freed. Rounds and bills
+ * that already hold it keep their snapshot and are untouched.
  */
 
 export interface ListProductsFilter {
@@ -31,7 +35,7 @@ export interface ListProductsFilter {
 }
 
 export async function list(filter: ListProductsFilter): Promise<ProductMasterDocument[]> {
-  const query: Record<string, unknown> = {};
+  const query: Record<string, unknown> = { ...NOT_DELETED };
 
   if (!filter.includeInactive) query.isActive = true;
   if (filter.availableOnly) query.isAvailable = true;
@@ -84,15 +88,22 @@ export async function getMenu(options: {
 }
 
 export async function getByIdOrThrow(id: string): Promise<ProductMasterDocument> {
-  const product = await ProductMaster.findById(id);
+  const product = await ProductMaster.findOne({ _id: id, ...NOT_DELETED });
   if (!product) throw ApiError.notFound('Product not found');
   return product;
+}
+
+async function assertCodeFree(productCode: string): Promise<void> {
+  const code = productCode.trim().toUpperCase();
+  const clash = await ProductMaster.exists({ productCode: code, ...NOT_DELETED });
+  if (clash) throw ApiError.conflict(`Product code ${code} is already on the menu`);
 }
 
 export async function create(
   payload: Record<string, unknown>,
   actor: Actor,
 ): Promise<ProductMasterDocument> {
+  await assertCodeFree(typeof payload.productCode === 'string' ? payload.productCode : '');
   const product = await ProductMaster.create({
     ...payload,
     taxPercent: payload.taxPercent ?? env.defaultTaxPercent,
@@ -180,6 +191,60 @@ export async function setAvailability(
     displayName: product.displayName,
     isAvailable,
     reason,
+  });
+
+  return product;
+}
+
+/**
+ * Deletes a menu item (soft — see models/softDelete.ts).
+ *
+ * Never refused, even mid-service: a round already placed holds its own copy
+ * of the name, price and tax, so the kitchen still cooks it and the bill still
+ * charges it. The broadcast is the same one the 86 toggle sends, so every
+ * guest's phone drops the item at once; a guest who still has it in their
+ * cart is told it is no longer on the menu when they send the order.
+ *
+ * The image is left where it is: the CDN file costs nothing and an old bill
+ * or audit row may still be viewed next to it.
+ */
+export async function remove(
+  id: string,
+  reason: string,
+  actor: Actor,
+): Promise<ProductMasterDocument> {
+  const product = await getByIdOrThrow(id);
+  const before = {
+    productCode: product.productCode,
+    displayName: product.displayName,
+    category: product.category,
+    price: product.price,
+    isActive: product.isActive,
+    isAvailable: product.isAvailable,
+  };
+
+  product.isActive = false;
+  product.isDeleted = true;
+  product.deletedAt = new Date();
+  product.deletedBy = actorSnapshot(actor);
+  product.deleteReason = reason;
+  await product.save();
+
+  await auditService.record({
+    entityType: AUDIT_ENTITY.PRODUCT,
+    entityId: product._id,
+    action: AUDIT_ACTION.PRODUCT_DELETED,
+    actor,
+    before,
+    meta: { reason, productCode: product.productCode, displayName: product.displayName },
+  });
+
+  emitToAll(SOCKET_EVENTS.PRODUCT_AVAILABILITY, {
+    productCode: product.productCode,
+    displayName: product.displayName,
+    price: product.price,
+    isAvailable: false,
+    deleted: true,
   });
 
   return product;
@@ -291,7 +356,7 @@ export async function bulkUpsert(rows: BulkRow[], actor: Actor): Promise<BulkRes
     }
     seen.add(productCode);
 
-    const existing = await ProductMaster.findOne({ productCode });
+    const existing = await ProductMaster.findOne({ productCode, ...NOT_DELETED });
 
     if (existing) {
       const before = existing.toObject();

@@ -78,6 +78,8 @@ export interface ExportRequestOptions {
 export interface LiveTableTile {
   tableId: string;
   code: string;
+  zoneId: string;
+  /** The zone's current name, read from Zone at request time. */
   zone: string;
   displayOrder: number;
   seatingCapacity: number;
@@ -86,7 +88,12 @@ export interface LiveTableTile {
   sessionNumber: number | null;
   openedAt: Date | null;
   minutesOpen: number;
+  /** Includes every table whose bill was moved onto this one. */
   runningTotal: number;
+  /** This table's bill was moved: the table that pays it. */
+  billWithTableCode: string | null;
+  /** Open tables whose bill was moved onto this one. */
+  billIncludes: string[];
   roundCount: number;
   pendingItemCount: number;
   readyItemCount: number;

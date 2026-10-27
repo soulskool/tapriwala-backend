@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 
 import { createApp } from '../../src/app.js';
 import { env } from '../../src/config/env.js';
-import { KITCHEN_STATIONS, ROLES, TABLE_ZONES } from '../../src/config/constants.js';
+import { KITCHEN_STATIONS, ROLES } from '../../src/config/constants.js';
 import {
   AuditLog,
   BillingExport,
@@ -13,6 +13,7 @@ import {
   ProductMaster,
   ServiceRequest,
   TableMaster,
+  Zone,
   TableSession,
   User,
   hashPin,
@@ -97,6 +98,7 @@ export async function resetDatabase(): Promise<void> {
     ProductMaster.deleteMany({}),
     TableMaster.deleteMany({}),
     User.deleteMany({}),
+    Zone.deleteMany({}),
   ]);
 }
 
@@ -123,13 +125,21 @@ export async function seedFixtures(): Promise<void> {
   // under test.
   await Promise.all(Object.values(mongoose.models).map((model) => model.createIndexes()));
 
+  const zones = await Zone.insertMany(
+    ['Left', 'Middle', 'Right', 'Veranda'].map((name, index) => ({
+      name,
+      displayOrder: index + 1,
+    })),
+  );
+  const zoneId = (name: string) => zones.find((zone) => zone.name === name)!._id;
+
   const tables = [
-    { code: 'M1', zone: TABLE_ZONES.MIDDLE, displayOrder: 1 },
-    { code: 'M2', zone: TABLE_ZONES.MIDDLE, displayOrder: 2 },
-    { code: 'R1', zone: TABLE_ZONES.RIGHT, displayOrder: 1 },
-    { code: 'R4', zone: TABLE_ZONES.RIGHT, displayOrder: 4 },
-    { code: 'L5', zone: TABLE_ZONES.LEFT, displayOrder: 5 },
-    { code: 'V1', zone: TABLE_ZONES.VERANDA, displayOrder: 1 },
+    { code: 'M1', zoneId: zoneId('Middle'), displayOrder: 1 },
+    { code: 'M2', zoneId: zoneId('Middle'), displayOrder: 2 },
+    { code: 'R1', zoneId: zoneId('Right'), displayOrder: 1 },
+    { code: 'R4', zoneId: zoneId('Right'), displayOrder: 4 },
+    { code: 'L5', zoneId: zoneId('Left'), displayOrder: 5 },
+    { code: 'V1', zoneId: zoneId('Veranda'), displayOrder: 1 },
   ];
   await TableMaster.insertMany(tables.map((table) => ({ ...table, seatingCapacity: 4 })));
 

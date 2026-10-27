@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import mongoose, { Schema, model, type Model, type HydratedDocument } from 'mongoose';
 
 import { APP_CONSTANTS, ROLE_VALUES, type Role } from '../config/constants.js';
+import { LIVE_ONLY_INDEX, softDeleteSchemaFields, type SoftDeleteFields } from './softDelete.js';
 
 /**
  * Staff account.
@@ -9,8 +10,11 @@ import { APP_CONSTANTS, ROLE_VALUES, type Role } from '../config/constants.js';
  * Devices on the floor are shared (one waiter phone, one kitchen tablet), so
  * login is a short PIN rather than a password — but every action is still
  * attributed to the individual who tapped it via the audit log.
+ *
+ * Deleting an account is a soft delete (see softDelete.ts): the name stays on
+ * every audit row and bill it signed, and the phone is freed for a new hire.
  */
-export interface IUser {
+export interface IUser extends SoftDeleteFields {
   name: string;
   phone: string;
   role: Role;
@@ -34,7 +38,6 @@ const userSchema = new Schema<IUser, UserModel, IUserMethods>(
     phone: {
       type: String,
       required: true,
-      unique: true,
       trim: true,
       match: [/^\d{10}$/, 'Phone must be a 10 digit number'],
     },
@@ -43,9 +46,12 @@ const userSchema = new Schema<IUser, UserModel, IUserMethods>(
     pinHash: { type: String, required: true, select: false },
     isActive: { type: Boolean, default: true, index: true },
     lastLoginAt: { type: Date, default: null },
+    ...softDeleteSchemaFields,
   },
   { timestamps: true, versionKey: false },
 );
+
+userSchema.index({ phone: 1 }, { unique: true, name: 'uniq_live_user_phone', ...LIVE_ONLY_INDEX });
 
 userSchema.methods.comparePin = function comparePin(candidate: string): Promise<boolean> {
   return bcrypt.compare(candidate, this.pinHash);

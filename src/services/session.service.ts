@@ -13,6 +13,7 @@ import {
   type SessionStatus,
 } from '../config/constants.js';
 import {
+  BillingExport,
   OrderRound,
   ServiceRequest,
   TableMaster,
@@ -65,11 +66,47 @@ export async function getDetail(sessionId: string): Promise<Record<string, unkno
   const allItems = rounds.flatMap((round) => round.items);
   const totals = totalsForItems(allItems);
 
+  const [payer, riders] = await Promise.all([
+    session.billMovedTo
+      ? TableSession.findById(session.billMovedTo).select('tableCode tableId').lean()
+      : null,
+    TableSession.find({ billMovedTo: session._id }).select('tableCode tableId isActive').lean(),
+  ]);
+
+  // The other tables' rounds, so the paying table's screen shows the whole bill.
+  const riderRounds = riders.length
+    ? await OrderRound.find({ sessionId: { $in: riders.map((rider) => rider._id) } })
+        .sort({ roundNumber: 1 })
+        .lean()
+    : [];
+
   return {
     session: {
       ...session.toObject(),
       minutesOpen: minutesSince(session.openedAt),
     },
+    /** Where this table's bill went, if it was moved. */
+    billMovedTo: payer
+      ? { sessionId: String(payer._id), tableId: String(payer.tableId), tableCode: payer.tableCode }
+      : null,
+    /** Tables whose bill was moved onto this one. */
+    billIncludes: riders.map((rider) => {
+      const rounds = riderRounds.filter((round) => round.sessionId.equals(rider._id));
+      return {
+        sessionId: String(rider._id),
+        tableId: String(rider.tableId),
+        tableCode: rider.tableCode,
+        isActive: rider.isActive,
+        rounds: rounds.map((round) => ({
+          ...round,
+          elapsedMinutes: minutesSince(round.placedAt),
+          isAddOn: round.roundNumber > 1,
+        })),
+        totals: totalsForItems(rounds.flatMap((round) => round.items)),
+      };
+    }),
+    /** This table plus every table on its bill — what the bill will charge. */
+    billTotals: totalsForItems([...allItems, ...riderRounds.flatMap((round) => round.items)]),
     rounds: rounds.map((round) => ({
       ...round,
       elapsedMinutes: minutesSince(round.placedAt),
@@ -421,6 +458,18 @@ export async function close(input: CloseSessionInput): Promise<TableSessionDocum
     throw ApiError.invalidState('This session is already closed');
   }
 
+  const heldRider = input.force
+    ? null
+    : await TableSession.findOne({ billMovedTo: session._id, isActive: true, heldForReview: true })
+        .select('tableCode')
+        .lean();
+  if (heldRider) {
+    throw ApiError.invalidState(
+      `${heldRider.tableCode}, which is on this bill, is held for manager review. Resolve it, or close with force.`,
+      { heldForReview: true, tableCode: heldRider.tableCode },
+    );
+  }
+
   if (session.heldForReview && !input.force) {
     throw ApiError.invalidState(
       'This session is held for manager review. Resolve the review, or close with force.',
@@ -429,14 +478,21 @@ export async function close(input: CloseSessionInput): Promise<TableSessionDocum
   }
 
   if (!input.force) {
-    const outstanding = await OrderRound.countDocuments({
-      sessionId: session._id,
+    // Every table on this bill, not just this one: closing M3 closes M4 too.
+    const cooking = await OrderRound.find({
+      sessionId: { $in: await billSessionIds(session._id) },
       'items.status': { $in: ['pending', 'accepted', 'preparing'] },
-    });
-    if (outstanding > 0) {
+    })
+      .select('tableCode')
+      .lean();
+    if (cooking.length > 0) {
+      const tables = [...new Set(cooking.map((round) => round.tableCode))];
+      const others = tables.filter((code) => code !== session.tableCode);
       throw ApiError.invalidState(
-        'This table still has items the kitchen has not finished. Close with force to override.',
-        { outstandingRounds: outstanding },
+        others.length > 0
+          ? `The kitchen has not finished items for ${tables.join(', ')} on this bill. Close with force to override.`
+          : 'This table still has items the kitchen has not finished. Close with force to override.',
+        { outstandingRounds: cooking.length, tableCodes: tables },
       );
     }
   }
@@ -505,7 +561,249 @@ export async function close(input: CloseSessionInput): Promise<TableSessionDocum
     by: input.actor.name,
   });
 
+  await settleRiders(session, input);
+
   return session;
+}
+
+// ─── Moving a bill to another table ─────────────────────────────────────────
+
+/**
+ * Two tables, one bill: "M4 and M3 are one party, put it all on M3's bill."
+ *
+ * Nothing moves. M4 keeps its session, its rounds keep their numbers and their
+ * table code — so the kitchen still cooks and runs M4's food to M4 — and M4's
+ * session just points at the session that will pay (`billMovedTo`). The bill
+ * for M3 then reads every round of M3 *and* of each session pointing at it,
+ * and merges them line by line the way it always has: the paper is an ordinary
+ * M3 bill with no trace of the move. The KDS splits, billing merges — this is
+ * that rule across two tables instead of two rounds.
+ *
+ * Pointers are kept flat: every session points straight at the paying one,
+ * never at another moved session, so moving M3's bill on to M2 later takes M4
+ * with it in the same write.
+ */
+
+/** The paying session plus every session whose bill was moved onto it. */
+export async function billSessionIds(payingSessionId: Types.ObjectId): Promise<Types.ObjectId[]> {
+  const moved = await TableSession.find({ billMovedTo: payingSessionId }).select('_id').lean();
+  return [payingSessionId, ...moved.map((session) => session._id)];
+}
+
+async function assertNotBilled(session: TableSessionDocument, what: string): Promise<void> {
+  if (await BillingExport.exists({ sessionId: session._id })) {
+    throw ApiError.invalidState(
+      `${what} — ${session.tableCode}'s bill has already been generated.`,
+    );
+  }
+}
+
+/** Both affected tables repaint: tiles, billing queue, the table screens. */
+function announceBillMove(
+  from: TableSessionDocument,
+  to: { tableId: Types.ObjectId; tableCode: string },
+) {
+  for (const table of [
+    { tableId: from.tableId, tableCode: from.tableCode },
+    { tableId: to.tableId, tableCode: to.tableCode },
+  ]) {
+    broadcast(
+      SOCKET_EVENTS.TABLE_STATUS,
+      { tableId: String(table.tableId), tableCode: table.tableCode, billMoved: true },
+      { tableId: String(table.tableId) },
+    );
+  }
+  broadcast(
+    SOCKET_EVENTS.SESSION_STATUS_CHANGE,
+    {
+      sessionId: String(from._id),
+      tableId: String(from.tableId),
+      tableCode: from.tableCode,
+      status: from.status,
+    },
+    { tableId: String(from.tableId), sessionId: String(from._id) },
+  );
+}
+
+export async function moveBill(input: {
+  sessionId: string;
+  toTableId: string;
+  actor: Actor;
+  reason?: string;
+  ip?: string | null;
+}): Promise<{ session: TableSessionDocument; payingTableCode: string }> {
+  const session = await getByIdOrThrow(input.sessionId);
+  if (session.status === SESSION_STATUS.CLOSED) {
+    throw ApiError.invalidState('This table is already closed');
+  }
+  if (String(session.tableId) === input.toTableId) {
+    throw ApiError.badRequest('Pick a different table');
+  }
+
+  const targetTable = await TableMaster.findById(input.toTableId).select('code isActive').lean();
+  if (!targetTable?.isActive) {
+    throw ApiError.invalidState('That table is not in service');
+  }
+
+  const targetSession = await findActiveByTable(targetTable._id);
+  if (!targetSession) {
+    throw ApiError.invalidState(
+      `${targetTable.code} has no open order. A bill can only be moved to a table that has one.`,
+    );
+  }
+
+  // Follow the target's own pointer, so the move lands on whoever actually pays.
+  const paying = targetSession.billMovedTo
+    ? await TableSession.findById(targetSession.billMovedTo)
+    : targetSession;
+  if (!paying || paying.status === SESSION_STATUS.CLOSED) {
+    throw ApiError.invalidState(`${targetTable.code}'s bill is no longer open`);
+  }
+  if (paying._id.equals(session._id)) {
+    throw ApiError.badRequest(`${targetTable.code}'s bill is already on ${session.tableCode}`);
+  }
+
+  // Already on that bill: a repeated tap or a retried request. Nothing to do,
+  // and no second audit row for a move that did not happen.
+  if (session.billMovedTo?.equals(paying._id)) {
+    return { session, payingTableCode: paying.tableCode };
+  }
+
+  await assertNotBilled(session, 'Cannot move this bill');
+  if (session.billMovedTo) {
+    // Already on someone's bill: if that bill is printed, these orders are on it.
+    const current = await TableSession.findById(session.billMovedTo);
+    if (current) await assertNotBilled(current, 'Cannot move this bill');
+  }
+  await assertNotBilled(paying, `Cannot add to ${paying.tableCode}`);
+
+  const previous = session.billMovedTo;
+  session.billMovedTo = paying._id;
+  session.billMovedAt = new Date();
+  session.billMovedBy = actorSnapshot(input.actor);
+  await session.save();
+
+  // Anything already riding on this table's bill comes along, pointing
+  // straight at the new payer so the chain never gets longer than one hop.
+  const riders = await TableSession.find({ billMovedTo: session._id }).select('tableCode').lean();
+  if (riders.length > 0) {
+    await TableSession.updateMany(
+      { billMovedTo: session._id },
+      { $set: { billMovedTo: paying._id } },
+    );
+  }
+
+  await auditService.record({
+    entityType: AUDIT_ENTITY.SESSION,
+    entityId: session._id,
+    action: AUDIT_ACTION.SESSION_BILL_MOVED,
+    actor: input.actor,
+    sessionId: session._id,
+    tableCode: session.tableCode,
+    before: { billMovedTo: previous ? String(previous) : null },
+    after: { billMovedTo: String(paying._id), toTableCode: paying.tableCode },
+    meta: {
+      fromTableCode: session.tableCode,
+      toTableCode: paying.tableCode,
+      toSessionId: String(paying._id),
+      alsoMoved: riders.map((rider) => rider.tableCode),
+      reason: input.reason ?? '',
+    },
+    ip: input.ip ?? null,
+  });
+
+  announceBillMove(session, paying);
+  logger.info(`Bill for ${session.tableCode} moved to ${paying.tableCode} by ${input.actor.name}`);
+
+  return { session, payingTableCode: paying.tableCode };
+}
+
+/**
+ * Gives a table its own bill back. Allowed until the paying table's bill is
+ * generated; after that the money is on paper and the move is history.
+ */
+export async function undoBillMove(input: {
+  sessionId: string;
+  actor: Actor;
+  reason?: string;
+  auto?: boolean;
+  ip?: string | null;
+}): Promise<TableSessionDocument> {
+  const session = await getByIdOrThrow(input.sessionId);
+  if (!session.billMovedTo) throw ApiError.invalidState('This table has its own bill');
+  // Its orders can only still be paid on the bill it rides on: a closed table
+  // can never be billed again, so taking it off would lose the money.
+  if (session.status === SESSION_STATUS.CLOSED && !input.auto) {
+    throw ApiError.invalidState(
+      `${session.tableCode} is already closed; its orders stay on the bill they were moved to.`,
+    );
+  }
+
+  const paying = await TableSession.findById(session.billMovedTo);
+  if (paying && !input.auto) await assertNotBilled(paying, 'Too late to undo');
+
+  session.billMovedTo = null;
+  session.billMovedAt = null;
+  session.billMovedBy = null;
+  await session.save();
+
+  await auditService.record({
+    entityType: AUDIT_ENTITY.SESSION,
+    entityId: session._id,
+    action: AUDIT_ACTION.SESSION_BILL_MOVE_UNDONE,
+    actor: input.actor,
+    sessionId: session._id,
+    tableCode: session.tableCode,
+    before: {
+      billMovedTo: paying ? String(paying._id) : null,
+      toTableCode: paying?.tableCode ?? '',
+    },
+    after: { billMovedTo: null },
+    meta: {
+      fromTableCode: session.tableCode,
+      toTableCode: paying?.tableCode ?? '',
+      reason: input.reason ?? '',
+      automatic: Boolean(input.auto),
+    },
+    ip: input.ip ?? null,
+  });
+
+  if (paying) announceBillMove(session, paying);
+  return session;
+}
+
+/**
+ * What happens to the tables riding on a bill when the paying table closes.
+ *
+ * Billed: they were paid for on that bill, so they close with it — as a billed
+ * close, so nothing still cooking for them is written off.
+ * Freed without a bill (the floor's escape hatch): nobody paid, so each one
+ * gets its own bill back and stays open, rather than its guests' orders
+ * vanishing with somebody else's table.
+ */
+async function settleRiders(paying: TableSessionDocument, input: CloseSessionInput): Promise<void> {
+  const riders = await TableSession.find({ billMovedTo: paying._id, isActive: true });
+
+  for (const rider of riders) {
+    if (input.billingExportId) {
+      await close({
+        sessionId: String(rider._id),
+        actor: input.actor,
+        billingExportId: input.billingExportId,
+        note: `Billed with ${paying.tableCode}`,
+        force: true,
+        ip: input.ip ?? null,
+      });
+    } else {
+      await undoBillMove({
+        sessionId: String(rider._id),
+        actor: input.actor,
+        reason: `${paying.tableCode} was freed without a bill`,
+        auto: true,
+        ip: input.ip ?? null,
+      });
+    }
+  }
 }
 
 // ─── Transfer ────────────────────────────────────────────────────────────────

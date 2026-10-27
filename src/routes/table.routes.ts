@@ -6,6 +6,7 @@ import { authenticate, authorize } from '../middlewares/authMiddleware.js';
 import { validate } from '../middlewares/validate.js';
 import {
   createTableValidation,
+  deleteReasonBody,
   listTablesValidation,
   objectIdParam,
   updateTableValidation,
@@ -30,6 +31,13 @@ router.patch(
   authorize(ROLES.ADMIN),
   validate([objectIdParam('id', 'Table id'), ...updateTableValidation]),
   tableController.update,
+);
+
+router.delete(
+  '/:id',
+  authorize(ROLES.ADMIN),
+  validate([objectIdParam('id', 'Table id'), ...deleteReasonBody]),
+  tableController.remove,
 );
 
 export default router;

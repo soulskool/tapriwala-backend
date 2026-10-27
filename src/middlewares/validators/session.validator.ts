@@ -29,6 +29,17 @@ export const transferSessionValidation: ValidationChain[] = [
     .isLength({ max: 200 }),
 ];
 
+/** POST /sessions/:id/move-bill — put this table's bill on another table's. */
+export const moveBillValidation: ValidationChain[] = [
+  body('toTableId').isMongoId().withMessage('Choose the table that will pay'),
+  body('reason').optional().trim().isLength({ max: 200 }),
+];
+
+/** POST /sessions/:id/undo-bill-move */
+export const undoBillMoveValidation: ValidationChain[] = [
+  body('reason').optional().trim().isLength({ max: 200 }),
+];
+
 /** PATCH /sessions/:id/review — flag/clear a session for manager review. */
 export const reviewSessionValidation: ValidationChain[] = [
   body('heldForReview').isBoolean().withMessage('heldForReview must be a boolean').toBoolean(),

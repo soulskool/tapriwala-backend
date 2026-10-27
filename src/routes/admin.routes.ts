@@ -8,6 +8,7 @@ import {
   createUserValidation,
   dailySalesValidation,
   dateRangeQuery,
+  deleteReasonBody,
   itemSalesValidation,
   listAuditValidation,
   objectIdParam,
@@ -64,6 +65,12 @@ router.patch(
   requireRole(...STAFF_MANAGER_ROLES),
   validate([objectIdParam('id', 'User id'), ...updateUserValidation]),
   adminController.updateUser,
+);
+router.delete(
+  '/users/:id',
+  requireRole(...STAFF_MANAGER_ROLES),
+  validate([objectIdParam('id', 'User id'), ...deleteReasonBody]),
+  adminController.deleteUser,
 );
 
 export default router;

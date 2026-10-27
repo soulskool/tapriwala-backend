@@ -5,7 +5,14 @@
  * `validate(placeOrderValidation)` with one import line, and validators stay
  * grouped by domain instead of piling into one 800-line file.
  */
-export { objectIdParam, paginationQuery, dateRangeQuery } from './common.validator.js';
+export {
+  objectIdParam,
+  paginationQuery,
+  dateRangeQuery,
+  deleteReasonBody,
+} from './common.validator.js';
+
+export { createZoneValidation, updateZoneValidation } from './zone.validator.js';
 
 export { loginValidation, createUserValidation, updateUserValidation } from './auth.validator.js';
 
@@ -30,6 +37,8 @@ export {
   openSessionValidation,
   closeSessionValidation,
   transferSessionValidation,
+  moveBillValidation,
+  undoBillMoveValidation,
   reviewSessionValidation,
   listSessionsValidation,
 } from './session.validator.js';

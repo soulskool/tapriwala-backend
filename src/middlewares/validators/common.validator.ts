@@ -1,4 +1,4 @@
-import { param, query, type ValidationChain } from 'express-validator';
+import { body, param, query, type ValidationChain } from 'express-validator';
 
 import { APP_CONSTANTS } from '../../config/constants.js';
 
@@ -20,4 +20,16 @@ export const paginationQuery: ValidationChain[] = [
 export const dateRangeQuery: ValidationChain[] = [
   query('from').optional().isISO8601().withMessage('from must be an ISO date').toDate(),
   query('to').optional().isISO8601().withMessage('to must be an ISO date').toDate(),
+];
+
+/**
+ * DELETE on a master record (zone, table, menu item, staff account). The
+ * reason is optional and lands on the record and in the audit log.
+ */
+export const deleteReasonBody: ValidationChain[] = [
+  body('reason')
+    .optional()
+    .trim()
+    .isLength({ max: 200 })
+    .withMessage('Reason must be at most 200 characters'),
 ];

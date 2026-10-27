@@ -60,12 +60,31 @@ import { nextBillNumber } from './counter.service.js';
  */
 export async function consolidate(sessionId: string): Promise<ConsolidatedBill> {
   const session = await sessionService.getByIdOrThrow(sessionId);
-  const rounds = await OrderRound.find({ sessionId: session._id }).sort({ roundNumber: 1 }).lean();
+  if (session.billMovedTo) {
+    const payer = await TableSession.findById(session.billMovedTo).select('tableCode').lean();
+    throw ApiError.invalidState(
+      `${session.tableCode}'s bill was moved to ${payer?.tableCode ?? 'another table'}. Bill that table to charge both.`,
+      { billMovedTo: String(session.billMovedTo), tableCode: payer?.tableCode ?? null },
+    );
+  }
+
+  // This table's rounds plus those of every table whose bill was moved here.
+  // Grouping below is by product, not by round, so the paper is one ordinary
+  // bill; the per-session sort keeps each table's rounds in their own order.
+  const sessionIds = await sessionService.billSessionIds(session._id);
+  const rounds = await OrderRound.find({ sessionId: { $in: sessionIds } })
+    .sort({ placedAt: 1, roundNumber: 1 })
+    .lean();
+  const riderHeld = await TableSession.exists({
+    billMovedTo: session._id,
+    isActive: true,
+    heldForReview: true,
+  });
 
   const billable = new Map<string, ConsolidatedLine>();
   const cancelled = new Map<string, ConsolidatedLine>();
   let itemCount = 0;
-  let requiresReview = session.heldForReview;
+  let requiresReview = session.heldForReview || Boolean(riderHeld);
 
   for (const round of rounds) {
     // `.lean()` skips the schema default, and rounds older than this field have
@@ -148,28 +167,62 @@ export async function consolidate(sessionId: string): Promise<ConsolidatedBill> 
   };
 }
 
-/** Sessions waiting at the counter, longest-waiting first. */
+/**
+ * Sessions waiting at the counter, longest-waiting first.
+ *
+ * A table whose bill was moved is billed at the table that pays: the guest at
+ * M4 asking for the bill puts M3 in the queue — with M4's total included and
+ * "incl. M4" beside it — and never M4 on its own.
+ */
 export async function getBillingQueue(): Promise<Record<string, unknown>[]> {
-  const sessions = await TableSession.find({
+  const requested = await TableSession.find({
     isActive: true,
     status: SESSION_STATUS.BILL_REQUESTED,
   })
     .sort({ billRequestedAt: 1 })
     .lean();
 
-  return sessions.map((session) => ({
-    sessionId: String(session._id),
-    tableId: String(session.tableId),
-    tableCode: session.tableCode,
-    sessionNumber: session.sessionNumber,
-    openedAt: session.openedAt,
-    billRequestedAt: session.billRequestedAt,
-    waitingMinutes: minutesSince(session.billRequestedAt),
-    runningTotal: session.runningTotal,
-    totalRounds: session.totalRounds,
-    heldForReview: session.heldForReview,
-    reviewNote: session.reviewNote,
-  }));
+  const payerIds = [
+    ...new Set(requested.map((session) => String(session.billMovedTo ?? session._id))),
+  ];
+  const [payers, riders] = await Promise.all([
+    TableSession.find({ _id: { $in: payerIds }, isActive: true }).lean(),
+    TableSession.find({ billMovedTo: { $in: payerIds } })
+      .select('billMovedTo tableCode runningTotal isActive')
+      .lean(),
+  ]);
+  const payerById = new Map(payers.map((payer) => [String(payer._id), payer]));
+
+  return payerIds.flatMap((id) => {
+    const session = payerById.get(id);
+    if (!session) return [];
+    const mine = riders.filter((rider) => String(rider.billMovedTo) === id);
+
+    return [
+      {
+        sessionId: id,
+        tableId: String(session.tableId),
+        tableCode: session.tableCode,
+        sessionNumber: session.sessionNumber,
+        openedAt: session.openedAt,
+        // The earliest ask on the bill, so a waiting M4 is not queued as new.
+        billRequestedAt:
+          requested.find((r) => String(r.billMovedTo ?? r._id) === id)?.billRequestedAt ??
+          session.billRequestedAt,
+        waitingMinutes: minutesSince(
+          requested.find((r) => String(r.billMovedTo ?? r._id) === id)?.billRequestedAt ??
+            session.billRequestedAt,
+        ),
+        runningTotal: round2(
+          session.runningTotal + mine.reduce((sum, rider) => sum + rider.runningTotal, 0),
+        ),
+        totalRounds: session.totalRounds,
+        heldForReview: session.heldForReview,
+        reviewNote: session.reviewNote,
+        billIncludes: mine.filter((rider) => rider.isActive).map((rider) => rider.tableCode),
+      },
+    ];
+  });
 }
 
 // ─── Export ──────────────────────────────────────────────────────────────────

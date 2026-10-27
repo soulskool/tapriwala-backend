@@ -1,6 +1,7 @@
 import mongoose, { Schema, model, type Model, type HydratedDocument } from 'mongoose';
 
 import { KITCHEN_STATION_VALUES, type KitchenStation } from '../config/constants.js';
+import { LIVE_ONLY_INDEX, softDeleteSchemaFields, type SoftDeleteFields } from './softDelete.js';
 
 /**
  * Menu item.
@@ -12,8 +13,13 @@ import { KITCHEN_STATION_VALUES, type KitchenStation } from '../config/constants
  * Two different "off" switches, deliberately:
  *   isAvailable = false  -> 86'd for today, comes back tomorrow
  *   isActive    = false  -> retired from the menu permanently
+ *
+ * And a third, from the admin Menu page: `isDeleted` (see softDelete.ts). A
+ * deleted item vanishes from every screen, but bills and the sales report
+ * still read it by code. Its code is freed, so an item deleted by mistake can
+ * be added again under the same code and its sales history lines up.
  */
-export interface IProductMaster {
+export interface IProductMaster extends SoftDeleteFields {
   productCode: string;
   posName: string;
   displayName: string;
@@ -39,7 +45,6 @@ const productMasterSchema = new Schema<IProductMaster>(
     productCode: {
       type: String,
       required: true,
-      unique: true,
       trim: true,
       uppercase: true,
       maxlength: 32,
@@ -62,8 +67,14 @@ const productMasterSchema = new Schema<IProductMaster>(
     displayOrder: { type: Number, default: 0 },
     isAvailable: { type: Boolean, default: true, index: true },
     isActive: { type: Boolean, default: true, index: true },
+    ...softDeleteSchemaFields,
   },
   { timestamps: true, versionKey: false },
+);
+
+productMasterSchema.index(
+  { productCode: 1 },
+  { unique: true, name: 'uniq_live_product_code', ...LIVE_ONLY_INDEX },
 );
 
 // Menu render: active products, grouped by category, in fixed order.

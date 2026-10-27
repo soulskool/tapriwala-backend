@@ -25,7 +25,7 @@ export interface Harness {
   api: ReturnType<typeof makeApi>;
   tokens: Record<TestUserKey, string>;
   /** Table master rows, keyed by code — saves a lookup in every test. */
-  tables: Record<string, { _id: string; code: string }>;
+  tables: Record<string, { _id: string; code: string; zoneId: string; zone: string }>;
   close: () => Promise<void>;
 }
 
@@ -37,7 +37,7 @@ export async function createHarness(): Promise<Harness> {
 
   const master = await api('GET', '/tables/master', { token: tokens.admin });
   const tables: Harness['tables'] = {};
-  for (const table of master.data as { _id: string; code: string }[]) {
+  for (const table of master.data as Harness['tables'][string][]) {
     tables[table.code] = table;
   }
 

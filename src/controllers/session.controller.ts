@@ -92,6 +92,35 @@ export const transfer = asyncHandler(async (req, res) => {
   return sendSuccess(res, session, `Session moved to ${session.tableCode}`);
 });
 
+/** POST /sessions/:id/move-bill — this table's bill goes on another table's. */
+export const moveBill = asyncHandler(async (req, res) => {
+  const { toTableId, reason } = req.body as { toTableId: string; reason?: string };
+
+  const { session, payingTableCode } = await sessionService.moveBill({
+    sessionId: req.params.id as string,
+    toTableId,
+    ...(reason !== undefined ? { reason } : {}),
+    actor: getActor(req),
+    ip: req.ip ?? null,
+  });
+
+  return sendSuccess(res, session, `${session.tableCode}'s bill moved to ${payingTableCode}`);
+});
+
+/** POST /sessions/:id/undo-bill-move — the table gets its own bill back. */
+export const undoBillMove = asyncHandler(async (req, res) => {
+  const reason = (req.body as { reason?: string } | undefined)?.reason;
+
+  const session = await sessionService.undoBillMove({
+    sessionId: req.params.id as string,
+    ...(reason !== undefined ? { reason } : {}),
+    actor: getActor(req),
+    ip: req.ip ?? null,
+  });
+
+  return sendSuccess(res, session, `${session.tableCode} has its own bill again`);
+});
+
 /** PATCH /sessions/:id/review — hold/release for manager review. */
 export const setReview = asyncHandler(async (req, res) => {
   const { heldForReview, note } = req.body as { heldForReview: boolean; note?: string };

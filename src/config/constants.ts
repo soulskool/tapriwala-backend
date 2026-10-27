@@ -119,16 +119,12 @@ export const CUSTOMER_ACTOR = 'customer' as const;
 
 // ─── Tables ──────────────────────────────────────────────────────────────────
 
-export const TABLE_ZONES = {
-  LEFT: 'Left',
-  MIDDLE: 'Middle',
-  RIGHT: 'Right',
-  VERANDA: 'Veranda',
-  LAWN: 'Lawn',
-} as const;
-
-export type TableZone = (typeof TABLE_ZONES)[keyof typeof TABLE_ZONES];
-export const TABLE_ZONE_VALUES = Object.values(TABLE_ZONES) as TableZone[];
+/**
+ * Zones are data, not constants: admins manage them on the Tables page (see
+ * models/Zone.ts). These five are only what the seed and the zones migration
+ * create on a database that has none, in floor order.
+ */
+export const DEFAULT_ZONE_NAMES = ['Left', 'Middle', 'Right', 'Veranda', 'Lawn'] as const;
 
 // ─── Kitchen stations ────────────────────────────────────────────────────────
 
@@ -337,6 +333,7 @@ export const AUDIT_ENTITY = {
   ROUND: 'OrderRound',
   PRODUCT: 'ProductMaster',
   TABLE: 'TableMaster',
+  ZONE: 'Zone',
   SERVICE_REQUEST: 'ServiceRequest',
   BILLING_EXPORT: 'BillingExport',
   USER: 'User',
@@ -350,6 +347,8 @@ export const AUDIT_ACTION = {
   SESSION_STATUS_CHANGED: 'session.status_changed',
   SESSION_TRANSFERRED: 'session.transferred',
   SESSION_HELD_FOR_REVIEW: 'session.held_for_review',
+  SESSION_BILL_MOVED: 'session.bill_moved',
+  SESSION_BILL_MOVE_UNDONE: 'session.bill_move_undone',
 
   ROUND_PLACED: 'round.placed',
   ROUND_ITEM_STATUS_CHANGED: 'round.item_status_changed',
@@ -358,10 +357,16 @@ export const AUDIT_ACTION = {
   PRODUCT_CREATED: 'product.created',
   PRODUCT_UPDATED: 'product.updated',
   PRODUCT_AVAILABILITY_TOGGLED: 'product.availability_toggled',
+  PRODUCT_DELETED: 'product.deleted',
 
   TABLE_CREATED: 'table.created',
   TABLE_UPDATED: 'table.updated',
   TABLE_QR_ROTATED: 'table.qr_rotated',
+  TABLE_DELETED: 'table.deleted',
+
+  ZONE_CREATED: 'zone.created',
+  ZONE_UPDATED: 'zone.updated',
+  ZONE_DELETED: 'zone.deleted',
 
   SERVICE_REQUEST_RAISED: 'service_request.raised',
   SERVICE_REQUEST_UPDATED: 'service_request.updated',
@@ -373,6 +378,7 @@ export const AUDIT_ACTION = {
   USER_CREATED: 'user.created',
   USER_UPDATED: 'user.updated',
   USER_LOGIN: 'user.login',
+  USER_DELETED: 'user.deleted',
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTION)[keyof typeof AUDIT_ACTION];

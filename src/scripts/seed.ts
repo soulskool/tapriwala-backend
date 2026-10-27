@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 
-import { ROLES, ROLE_VALUES, TABLE_ZONES } from '../config/constants.js';
+import { DEFAULT_ZONE_NAMES, ROLES, ROLE_VALUES } from '../config/constants.js';
 import { connectDB, disconnectDB, syncIndexes } from '../config/db.js';
 import { assertEnv, env } from '../config/env.js';
 import {
@@ -13,7 +13,9 @@ import {
   TableMaster,
   TableSession,
   User,
+  Zone,
   hashPin,
+  NOT_DELETED,
 } from '../models/index.js';
 import { logger } from '../utils/logger.js';
 import { qrUrl } from '../services/table.service.js';
@@ -31,31 +33,31 @@ import { qrUrl } from '../services/table.service.js';
 const TABLES = [
   ...['L1', 'L2', 'L3', 'L4', 'L5'].map((code, index) => ({
     code,
-    zone: TABLE_ZONES.LEFT,
+    zone: 'Left',
     displayOrder: index + 1,
     seatingCapacity: 4,
   })),
   ...['M1', 'M2', 'M3', 'M4'].map((code, index) => ({
     code,
-    zone: TABLE_ZONES.MIDDLE,
+    zone: 'Middle',
     displayOrder: index + 1,
     seatingCapacity: 4,
   })),
   ...['R1', 'R2', 'R3', 'R4'].map((code, index) => ({
     code,
-    zone: TABLE_ZONES.RIGHT,
+    zone: 'Right',
     displayOrder: index + 1,
     seatingCapacity: 4,
   })),
   ...['V1', 'V2', 'V3'].map((code, index) => ({
     code,
-    zone: TABLE_ZONES.VERANDA,
+    zone: 'Veranda',
     displayOrder: index + 1,
     seatingCapacity: 6,
   })),
   ...['O1', 'O2', 'O3', 'O4'].map((code, index) => ({
     code,
-    zone: TABLE_ZONES.LAWN,
+    zone: 'Lawn',
     displayOrder: index + 1,
     seatingCapacity: 6,
   })),
@@ -134,17 +136,36 @@ async function reset(): Promise<void> {
   ]);
 }
 
-async function seedTables(): Promise<void> {
-  for (const table of TABLES) {
-    // Upsert by code so re-running never duplicates a table or rotates a QR
-    // token that is already printed and stuck to a table.
-    await TableMaster.updateOne(
-      { code: table.code },
-      { $set: table, $setOnInsert: { isActive: true } },
+/**
+ * The default zones, only on a database that has none. Once an admin has
+ * renamed or deleted one, re-running the seed must not bring it back.
+ */
+async function seedZones(): Promise<Map<string, mongoose.Types.ObjectId>> {
+  if ((await Zone.countDocuments(NOT_DELETED)) === 0) {
+    await Zone.insertMany(
+      DEFAULT_ZONE_NAMES.map((name, index) => ({ name, displayOrder: index + 1 })),
+    );
+    logger.info(`Seeded ${DEFAULT_ZONE_NAMES.length} zones`);
+  }
+  const zones = await Zone.find(NOT_DELETED).select('name').lean();
+  return new Map(zones.map((zone) => [zone.name, zone._id]));
+}
+
+async function seedTables(zoneIds: Map<string, mongoose.Types.ObjectId>): Promise<void> {
+  let created = 0;
+  for (const { zone, ...table } of TABLES) {
+    const zoneId = zoneIds.get(zone);
+    if (!zoneId) continue; // the admin deleted or renamed this default zone
+    // Insert-only, by live code: re-running never duplicates a table and never
+    // undoes an admin's edit to one.
+    const result = await TableMaster.updateOne(
+      { code: table.code, ...NOT_DELETED },
+      { $setOnInsert: { ...table, zoneId, isActive: true } },
       { upsert: true },
     );
+    created += result.upsertedCount;
   }
-  logger.info(`Seeded ${TABLES.length} tables`);
+  logger.info(`Seeded ${created} new tables (${TABLES.length} in the plan)`);
 }
 
 /**
@@ -168,7 +189,9 @@ async function warnIfMenuEmpty(): Promise<void> {
 
 async function seedUsers(): Promise<void> {
   for (const user of USERS) {
-    const existing = await User.findOne({ phone: user.phone }).select('_id').lean();
+    const existing = await User.findOne({ phone: user.phone, ...NOT_DELETED })
+      .select('_id')
+      .lean();
     if (existing) continue;
     await User.create({
       name: user.name,
@@ -186,8 +209,8 @@ async function seedUsers(): Promise<void> {
 }
 
 async function printQrSheet(): Promise<void> {
-  const tables = await TableMaster.find({ isActive: true })
-    .sort({ zone: 1, displayOrder: 1 })
+  const tables = await TableMaster.find({ isActive: true, ...NOT_DELETED })
+    .sort({ code: 1 })
     .lean();
   logger.info('QR URLs to print:');
   for (const table of tables) {
@@ -203,7 +226,7 @@ async function main(): Promise<void> {
 
   if (process.argv.includes('--reset')) await reset();
 
-  await seedTables();
+  await seedTables(await seedZones());
   await warnIfMenuEmpty();
   await seedUsers();
   await printQrSheet();

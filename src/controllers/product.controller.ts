@@ -72,6 +72,18 @@ export const setAvailability = asyncHandler(async (req, res) => {
   );
 });
 
+/** DELETE /products/:id — admin. History keeps its snapshot of the item. */
+export const remove = asyncHandler(async (req, res) => {
+  // Express 5 leaves `req.body` undefined on a DELETE sent without one.
+  const reason = (req.body as { reason?: string } | undefined)?.reason;
+  const product = await productService.remove(req.params.id as string, reason ?? '', getActor(req));
+  return sendSuccess(
+    res,
+    { id: String(product._id), productCode: product.productCode },
+    `${product.displayName} deleted from the menu`,
+  );
+});
+
 /** POST /products/bulk — Excel import (admin). */
 export const bulkUpsert = asyncHandler(async (req, res) => {
   const { products } = req.body as { products: productService.BulkRow[] };

@@ -1,7 +1,7 @@
 import type { RequestHandler } from 'express';
 
 import { FULL_ACCESS_ROLES, READ_ONLY_ROLES, type Role } from '../config/constants.js';
-import { TableMaster, TableSession, User } from '../models/index.js';
+import { NOT_DELETED, TableMaster, TableSession, User } from '../models/index.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { tokenFromRequest } from '../utils/authToken.js';
@@ -20,9 +20,9 @@ export const authenticate: RequestHandler = asyncHandler(async (req, _res, next)
   }
 
   const payload = verifyToken(token);
-  const user = await User.findById(payload.sub).select('name role isActive').lean();
+  const user = await User.findById(payload.sub).select('name role isActive isDeleted').lean();
 
-  if (!user) throw ApiError.unauthorized('Account no longer exists');
+  if (!user || user.isDeleted) throw ApiError.unauthorized('Account no longer exists');
   if (!user.isActive) throw ApiError.forbidden('Account is deactivated');
 
   // The whole of the view-only rule, in one place. Checked here rather than in
@@ -116,11 +116,19 @@ export const resolveTableCode: RequestHandler = asyncHandler(async (req, _res, n
   }
 
   // Codes are stored uppercase, and a guest may well type /order/m2 by hand.
-  const table = await TableMaster.findOne({ code: raw.trim().toUpperCase() })
+  // A deleted table's code may belong to a new table now, so only live ones.
+  const table = await TableMaster.findOne({ code: raw.trim().toUpperCase(), ...NOT_DELETED })
     .select('code isActive')
     .lean();
 
-  if (!table) throw ApiError.unauthorized('Unknown table code. Please ask staff for help.');
+  if (!table) {
+    // A sticker still on a table that was deleted: say so, so the guest asks
+    // staff instead of retyping the code.
+    if (await TableMaster.exists({ code: raw.trim().toUpperCase(), isDeleted: true })) {
+      throw ApiError.forbidden('This table is no longer in service. Please ask staff for help.');
+    }
+    throw ApiError.unauthorized('Unknown table code. Please ask staff for help.');
+  }
   if (!table.isActive) throw ApiError.forbidden('This table is not in service');
 
   const activeSession = await TableSession.findOne({ tableId: table._id, isActive: true })

@@ -16,6 +16,8 @@ import {
   placeOrderValidation,
   reviewSessionValidation,
   transferSessionValidation,
+  moveBillValidation,
+  undoBillMoveValidation,
 } from '../middlewares/validators/index.js';
 
 const router = Router();
@@ -67,6 +69,24 @@ router.post(
   authorize(ROLES.BILLING),
   validate([objectIdParam('id', 'Session id'), ...transferSessionValidation]),
   sessionController.transfer,
+);
+
+/**
+ * Two tables, one bill. Waiters too: they are standing at the table when the
+ * party says "put it all on M3". Every move and undo is audit-logged.
+ */
+router.post(
+  '/:id/move-bill',
+  authorize(ROLES.WAITER, ROLES.BILLING),
+  validate([objectIdParam('id', 'Session id'), ...moveBillValidation]),
+  sessionController.moveBill,
+);
+
+router.post(
+  '/:id/undo-bill-move',
+  authorize(ROLES.WAITER, ROLES.BILLING),
+  validate([objectIdParam('id', 'Session id'), ...undoBillMoveValidation]),
+  sessionController.undoBillMove,
 );
 
 router.patch(

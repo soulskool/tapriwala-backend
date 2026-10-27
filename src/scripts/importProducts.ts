@@ -6,7 +6,7 @@ import mongoose from 'mongoose';
 import { KITCHEN_STATIONS, type KitchenStation } from '../config/constants.js';
 import { connectDB, disconnectDB, syncIndexes } from '../config/db.js';
 import { assertEnv } from '../config/env.js';
-import { OrderRound, ProductMaster } from '../models/index.js';
+import { NOT_DELETED, OrderRound, ProductMaster } from '../models/index.js';
 import { logger } from '../utils/logger.js';
 import { SYSTEM_ACTOR } from '../utils/actor.js';
 import * as auditService from '../services/audit.service.js';
@@ -430,7 +430,7 @@ async function apply(plan: ImportPlan, options: { purge: boolean }): Promise<App
   const result: ApplyResult = { created: 0, updated: 0, unchanged: 0, retired: [], purged: [] };
 
   for (const row of plan.rows) {
-    const existing = await ProductMaster.findOne({ productCode: row.productCode });
+    const existing = await ProductMaster.findOne({ productCode: row.productCode, ...NOT_DELETED });
 
     const fields = {
       posName: row.posName,
@@ -488,7 +488,7 @@ async function apply(plan: ImportPlan, options: { purge: boolean }): Promise<App
   // take an item off the menu permanently, and it keeps old bills readable.
   // `--purge` hard-deletes, but only items no round has ever referenced.
   const sheetCodes = plan.rows.map((row) => row.productCode);
-  const strays = await ProductMaster.find({ productCode: { $nin: sheetCodes } });
+  const strays = await ProductMaster.find({ productCode: { $nin: sheetCodes }, ...NOT_DELETED });
 
   for (const stray of strays) {
     if (options.purge) {

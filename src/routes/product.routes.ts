@@ -8,6 +8,7 @@ import { validate } from '../middlewares/validate.js';
 import {
   bulkUpsertProductsValidation,
   createProductValidation,
+  deleteReasonBody,
   listProductsValidation,
   objectIdParam,
   toggleAvailabilityValidation,
@@ -68,6 +69,13 @@ router.post(
   uploadImage,
   validate([objectIdParam('id', 'Product id')]),
   productController.uploadProductImage,
+);
+
+router.delete(
+  '/:id',
+  authorize(ROLES.ADMIN),
+  validate([objectIdParam('id', 'Product id'), ...deleteReasonBody]),
+  productController.remove,
 );
 
 router.delete(

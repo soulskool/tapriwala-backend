@@ -23,7 +23,8 @@
     "menu:check": "tsx src/scripts/importProducts.ts --dry-run",
     "menu:import": "tsx src/scripts/importProducts.ts",
     "seed:reset": "tsx src/scripts/seed.ts --reset",
-    "users:activate": "tsx src/scripts/activateUsers.ts"
+    "users:activate": "tsx src/scripts/activateUsers.ts",
+    "migrate:zones": "tsx src/scripts/migrateZones.ts"
   },
   "keywords": [
     "cafe",

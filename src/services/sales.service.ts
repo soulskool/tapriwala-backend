@@ -157,8 +157,11 @@ export async function itemSales(options: {
   ]);
 
   const codes = [...new Set(grouped.map((row) => row._id.productCode))];
+  // Deleted items too, so they keep their category in the report. Sorted so
+  // a live item that reused a code overwrites the deleted one in the map.
   const products = await ProductMaster.find({ productCode: { $in: codes } })
     .select('productCode category')
+    .sort({ isDeleted: -1 })
     .lean();
   const categoryOf = new Map(products.map((p) => [p.productCode, p.category]));
 

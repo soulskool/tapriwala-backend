@@ -219,7 +219,7 @@ describe('table master data', () => {
   it('creates a table whose printable URL is its own code', async () => {
     const result = await h.api('POST', '/tables', {
       token: h.tokens.admin,
-      body: { code: 'V9', zone: 'Veranda', displayOrder: 9, seatingCapacity: 6 },
+      body: { code: 'V9', zoneId: h.tables.V1!.zoneId, displayOrder: 9, seatingCapacity: 6 },
     });
 
     // The sticker is reprintable from the code alone — there is no stored token

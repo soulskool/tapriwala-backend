@@ -37,6 +37,19 @@ function emitTo(rooms: string[], event: SocketEvent, payload: unknown): void {
   io.to(rooms).emit(event, payload);
 }
 
+/**
+ * Drops every live socket a staff account holds.
+ *
+ * The handshake re-reads the account, so the reconnect that follows is
+ * refused: a deleted account loses its live feed now, not at token expiry.
+ */
+export function disconnectUser(userId: string): void {
+  if (!io) return;
+  for (const socket of io.sockets.sockets.values()) {
+    if ((socket.data as { userId?: string }).userId === userId) socket.disconnect(true);
+  }
+}
+
 /** Everyone on staff: waiter, kitchen, billing, admin. */
 export function emitToStaff(event: SocketEvent, payload: unknown): void {
   emitTo(STAFF_ROLE_ROOMS.map(SOCKET_ROOMS.role), event, payload);

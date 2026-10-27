@@ -118,8 +118,11 @@ async function withProductNames<T extends { before?: unknown; after?: unknown; m
   const codes = [...new Set(rows.flatMap(productCodesIn))];
   if (codes.length === 0) return rows;
 
+  // Deleted items too — an old row still deserves a name. Sorted so a live
+  // item that reused a code overwrites the deleted one in the map.
   const products = await ProductMaster.find({ productCode: { $in: codes } })
     .select('productCode displayName')
+    .sort({ isDeleted: -1 })
     .lean();
   const names = new Map(products.map((product) => [product.productCode, product.displayName]));
 

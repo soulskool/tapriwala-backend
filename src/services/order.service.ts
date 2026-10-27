@@ -19,6 +19,7 @@ import {
 } from '../config/constants.js';
 import { env } from '../config/env.js';
 import {
+  NOT_DELETED,
   OrderRound,
   ProductMaster,
   TableSession,
@@ -71,7 +72,8 @@ export interface PlaceRoundInput {
 async function buildItems(input: OrderItemInput[]): Promise<IOrderItem[]> {
   const codes = Array.from(new Set(input.map((item) => item.productCode.trim().toUpperCase())));
 
-  const products = await ProductMaster.find({ productCode: { $in: codes } }).lean();
+  // A deleted item reads as unknown: "Some items are not on the menu".
+  const products = await ProductMaster.find({ productCode: { $in: codes }, ...NOT_DELETED }).lean();
   const byCode = new Map(products.map((product) => [product.productCode, product]));
 
   const unknown: string[] = [];
@@ -173,7 +175,11 @@ export async function placeRound(
 
   // A customer must not slip an order into a bill that is being settled.
   // Staff may still add for them — they can see the counter and the table.
-  if (session.billRequestedAt && input.actor.role === CUSTOMER_ACTOR) {
+  const payer =
+    session.billMovedTo && input.actor.role === CUSTOMER_ACTOR
+      ? await TableSession.findById(session.billMovedTo).select('billRequestedAt').lean()
+      : null;
+  if ((session.billRequestedAt || payer?.billRequestedAt) && input.actor.role === CUSTOMER_ACTOR) {
     throw ApiError.invalidState(
       'The bill has been requested for this table. Please ask a staff member to add items.',
       { billRequestedAt: session.billRequestedAt },
@@ -615,7 +621,9 @@ export async function getKitchenQueue(options: KitchenQueueOptions = {}): Promis
   );
 
   // Items 86'd since the order was placed get flagged on the ticket.
-  const unavailable = await ProductMaster.find({ isAvailable: false }).select('productCode').lean();
+  const unavailable = await ProductMaster.find({ isAvailable: false, ...NOT_DELETED })
+    .select('productCode')
+    .lean();
   const unavailableCodes = new Set(unavailable.map((product) => product.productCode));
 
   const tickets = rounds.map((round) =>

@@ -13,6 +13,7 @@ import publicRoutes from './public.routes.js';
 import serviceRequestRoutes from './serviceRequest.routes.js';
 import sessionRoutes from './session.routes.js';
 import tableRoutes from './table.routes.js';
+import zoneRoutes from './zone.routes.js';
 
 /**
  * API v1 router.
@@ -20,6 +21,7 @@ import tableRoutes from './table.routes.js';
  * Grouped by the screen that consumes it:
  *   /public            → customer QR pages (no login)
  *   /tables            → live table grid + table master
+ *   /zones             → café zones (admin-managed)
  *   /sessions,/rounds  → ordering
  *   /kitchen           → KDS
  *   /service-requests  → waiter dashboard
@@ -42,6 +44,7 @@ router.get('/health', (_req, res) => {
 router.use('/public', publicRoutes);
 router.use('/auth', authRoutes);
 router.use('/tables', tableRoutes);
+router.use('/zones', zoneRoutes);
 router.use('/products', productRoutes);
 router.use('/sessions', sessionRoutes);
 router.use('/rounds', orderRoutes);

@@ -1,7 +1,5 @@
 import { body, param, query, type ValidationChain } from 'express-validator';
 
-import { TABLE_ZONE_VALUES } from '../../config/constants.js';
-
 /** POST /tables */
 export const createTableValidation: ValidationChain[] = [
   body('code')
@@ -13,9 +11,8 @@ export const createTableValidation: ValidationChain[] = [
     .matches(/^[A-Za-z0-9 _-]+$/)
     .withMessage('Table code may contain letters, numbers, space, hyphen and underscore only'),
 
-  body('zone')
-    .isIn(TABLE_ZONE_VALUES)
-    .withMessage(`zone must be one of: ${TABLE_ZONE_VALUES.join(', ')}`),
+  // Whether the zone still exists is the service's call; this only checks shape.
+  body('zoneId').isMongoId().withMessage('Choose a zone'),
 
   body('displayOrder')
     .optional()
@@ -45,10 +42,7 @@ export const updateTableValidation: ValidationChain[] = [
     .withMessage('Table code must be 1–12 characters')
     .matches(/^[A-Za-z0-9 _-]+$/)
     .withMessage('Table code may contain letters, numbers, space, hyphen and underscore only'),
-  body('zone')
-    .optional()
-    .isIn(TABLE_ZONE_VALUES)
-    .withMessage(`zone must be one of: ${TABLE_ZONE_VALUES.join(', ')}`),
+  body('zoneId').optional().isMongoId().withMessage('Choose a zone'),
   body('displayOrder').optional().isInt({ min: 0 }).toInt(),
   body('seatingCapacity').optional().isInt({ min: 1, max: 50 }).toInt(),
   body('isActive').optional().isBoolean().toBoolean(),
@@ -71,6 +65,6 @@ export const tableCodeParamValidation: ValidationChain[] = [
 
 /** GET /tables — optional zone/status filters for the live grid. */
 export const listTablesValidation: ValidationChain[] = [
-  query('zone').optional().isIn(TABLE_ZONE_VALUES).withMessage('Unknown zone'),
+  query('zoneId').optional().isMongoId().withMessage('Unknown zone'),
   query('includeInactive').optional().isBoolean().toBoolean(),
 ];

@@ -48,6 +48,15 @@ export interface ITableSession {
   heldForReview: boolean;
   reviewNote: string;
   /** Populated when an admin moves a running session to a different table. */
+  /**
+   * Set when this table's bill was moved onto another table's ("M4 pays with
+   * M3"). Points at the session that pays — always directly, never at another
+   * moved session. This session keeps its own rounds; only the bill moves.
+   * See moveBill in session.service.
+   */
+  billMovedTo: Types.ObjectId | null;
+  billMovedAt: Date | null;
+  billMovedBy: { role: string; userId: Types.ObjectId | null; name: string } | null;
   transferHistory: {
     fromTableId: Types.ObjectId;
     toTableId: Types.ObjectId;
@@ -94,6 +103,9 @@ const tableSessionSchema = new Schema<ITableSession>(
     billRequestedAt: { type: Date, default: null },
     heldForReview: { type: Boolean, default: false },
     reviewNote: { type: String, default: '', maxlength: 500 },
+    billMovedTo: { type: Schema.Types.ObjectId, ref: 'TableSession', default: null, index: true },
+    billMovedAt: { type: Date, default: null },
+    billMovedBy: { type: actorSchema, default: null },
     transferHistory: {
       type: [
         new Schema(

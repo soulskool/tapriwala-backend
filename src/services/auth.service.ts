@@ -7,12 +7,14 @@ import {
   UNDEACTIVATABLE_ROLES,
   type Role,
 } from '../config/constants.js';
+import { NOT_DELETED } from '../models/softDelete.js';
 import { User, hashPin, type UserDocument } from '../models/User.js';
 import { ApiError } from '../utils/ApiError.js';
 import { compact } from '../utils/helpers.js';
 import { signToken } from '../utils/jwt.js';
 import { logger } from '../utils/logger.js';
-import type { Actor } from '../utils/actor.js';
+import { actorSnapshot, type Actor } from '../utils/actor.js';
+import { disconnectUser } from '../sockets/emitter.js';
 import * as auditService from './audit.service.js';
 
 /**
@@ -40,7 +42,8 @@ function getDecoyHash(): Promise<string> {
 }
 
 export async function login(phone: string, pin: string, ip?: string | null): Promise<LoginResult> {
-  const user = await User.findOne({ phone: String(phone) }).select(
+  // A deleted account's phone may belong to a new hire now.
+  const user = await User.findOne({ phone: String(phone), ...NOT_DELETED }).select(
     '+pinHash name role isActive phone',
   );
 
@@ -84,7 +87,9 @@ export async function createUser(
   payload: { name: string; phone: string; role: Role; pin: string },
   actor: Actor,
 ): Promise<UserDocument> {
-  const existing = await User.findOne({ phone: payload.phone }).select('_id').lean();
+  const existing = await User.findOne({ phone: payload.phone, ...NOT_DELETED })
+    .select('_id')
+    .lean();
   if (existing) throw ApiError.conflict('A user with this phone already exists');
 
   const user = await User.create({
@@ -110,7 +115,7 @@ export async function updateUser(
   payload: { name?: string; phone?: string; role?: Role; pin?: string; isActive?: boolean },
   actor: Actor,
 ): Promise<UserDocument> {
-  const user = await User.findById(userId);
+  const user = await User.findOne({ _id: userId, ...NOT_DELETED });
   if (!user) throw ApiError.notFound('User not found');
 
   // Judged on the account as it will be after this save, not as it is now, so
@@ -147,7 +152,9 @@ export async function updateUser(
   const before = { name: user.name, phone: user.phone, role: user.role, isActive: user.isActive };
 
   if (payload.phone && payload.phone !== user.phone) {
-    const clash = await User.findOne({ phone: payload.phone }).select('_id').lean();
+    const clash = await User.findOne({ phone: payload.phone, ...NOT_DELETED })
+      .select('_id')
+      .lean();
     if (clash) throw ApiError.conflict('Another user already uses this phone');
   }
 
@@ -175,8 +182,66 @@ export async function updateUser(
   return user;
 }
 
+/**
+ * Deletes a staff account (soft — see models/softDelete.ts).
+ *
+ * Their name stays on every order, bill and audit row they signed, because
+ * those rows store it. The account stops working on its next request and its
+ * live sockets are dropped now. Its phone is freed for a new hire.
+ *
+ * Two refusals, both about never locking the shop out of its own Staff page:
+ * nobody deletes themselves, and the last Admins account cannot go.
+ */
+export async function deleteUser(
+  userId: string,
+  reason: string,
+  actor: Actor,
+): Promise<UserDocument> {
+  const user = await User.findOne({ _id: userId, ...NOT_DELETED });
+  if (!user) throw ApiError.notFound('User not found');
+
+  if (actor.userId && String(actor.userId) === String(user._id)) {
+    throw ApiError.forbidden('You cannot delete your own account');
+  }
+
+  if (user.role === ROLES.SUPER_ADMIN) {
+    const others = await User.countDocuments({
+      _id: { $ne: user._id },
+      role: ROLES.SUPER_ADMIN,
+      isActive: true,
+      ...NOT_DELETED,
+    });
+    if (others === 0) {
+      throw ApiError.invalidState('This is the only Admins account and cannot be deleted.');
+    }
+  }
+
+  const before = { name: user.name, phone: user.phone, role: user.role, isActive: user.isActive };
+
+  user.isActive = false;
+  user.isDeleted = true;
+  user.deletedAt = new Date();
+  user.deletedBy = actorSnapshot(actor);
+  user.deleteReason = reason;
+  await user.save();
+
+  await auditService.record({
+    entityType: AUDIT_ENTITY.USER,
+    entityId: user._id,
+    action: AUDIT_ACTION.USER_DELETED,
+    actor,
+    before,
+    meta: { reason },
+  });
+
+  disconnectUser(String(user._id));
+  logger.info(`User deleted: ${user.name} (${user.role}) by ${actor.name}`);
+
+  return user;
+}
+
 export async function listUsers(includeInactive = false): Promise<UserDocument[]> {
-  const query = includeInactive ? {} : { isActive: true };
+  const query = includeInactive ? { ...NOT_DELETED } : { isActive: true, ...NOT_DELETED };
   return User.find(query).sort({ role: 1, name: 1 });
 }
 

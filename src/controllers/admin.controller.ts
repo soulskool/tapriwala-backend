@@ -63,6 +63,14 @@ export const updateUser = asyncHandler(async (req, res) => {
   );
 });
 
+/** DELETE /admin/users/:id — super admin. */
+export const deleteUser = asyncHandler(async (req, res) => {
+  // Express 5 leaves `req.body` undefined on a DELETE sent without one.
+  const reason = (req.body as { reason?: string } | undefined)?.reason;
+  const user = await authService.deleteUser(req.params.id as string, reason ?? '', getActor(req));
+  return sendSuccess(res, { id: String(user._id), name: user.name }, `${user.name} deleted`);
+});
+
 // ─── Audit ───────────────────────────────────────────────────────────────────
 
 /** GET /admin/audit — the scrutiny trail. */
