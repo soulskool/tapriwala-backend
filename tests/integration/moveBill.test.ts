@@ -100,9 +100,12 @@ describe('moving a bill', () => {
     );
   });
 
-  it('keeps the kitchen ticket on M2, where the food goes', async () => {
+  it('keeps the kitchen ticket on M2, where the food goes, tagged with who pays', async () => {
     const ticket = await findTicket(h, m2);
     expect(ticket.tableCode).toBe('M2');
+    expect(ticket.billWithTableCode).toBe('M1');
+    // The paying table's own ticket pays for itself.
+    expect((await findTicket(h, m1)).billWithTableCode).toBeNull();
   });
 
   it('puts a later order from M2 on M1’s bill too', async () => {
@@ -119,6 +122,7 @@ describe('moving a bill', () => {
     });
     expect(undone.status).toBe(200);
     expect((await bill(m2)).status).toBe(200);
+    expect((await findTicket(h, m2)).billWithTableCode).toBeNull();
     expect(
       (await AuditLog.findOne({ action: 'session.bill_move_undone' }).lean())!.actor.name,
     ).toBe('Test Waiter');
@@ -141,6 +145,9 @@ describe('a chain of moves', () => {
     expect(tea.quantity).toBe(5);
     expect((await TableSession.findById(m2).lean())!.billMovedTo!.toString()).toBe(r1);
     expect((await tile(h, 'R1')).billIncludes.sort()).toEqual(['M1', 'M2']);
+    // Both tickets now name the table at the end of the chain.
+    expect((await findTicket(h, m1)).billWithTableCode).toBe('R1');
+    expect((await findTicket(h, m2)).billWithTableCode).toBe('R1');
   });
 
   it('refuses to move a bill onto a table that rides on it', async () => {

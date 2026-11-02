@@ -183,7 +183,7 @@ async function main(): Promise<void> {
 
   if (APPLY) {
     await syncIndexes();
-    logger.info('Migration complete. Now deploy the backend, then the frontend.');
+    logger.info('Migration complete. Every table is in its zone.');
   } else {
     logger.info('Dry run only — nothing was written. Re-run with --apply to do it.');
   }

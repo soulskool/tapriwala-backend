@@ -531,6 +531,9 @@ export function toKdsTicket(
     // existed have no value stored at all.
     orderType: doc.orderType ?? ORDER_TYPE.DINING,
     placedByName: doc.placedBy?.name ?? '',
+    // Filled in by the queue read, which looks the payer up once for every
+    // ticket; a single round on its own (a socket payload) does not know it.
+    billWithTableCode: null,
     placedAt: doc.placedAt,
     elapsedMinutes: minutesSince(doc.placedAt),
     status: doc.status,
@@ -587,6 +590,39 @@ async function dropClosedSessions<T extends { sessionId: Types.ObjectId }>(
   return rounds.filter((round) => !closedIds.has(String(round.sessionId)));
 }
 
+/**
+ * Which table pays, for every session on the board whose bill was moved.
+ *
+ * Two reads for the whole board, not one per ticket: the moved sessions, then
+ * the tables they moved to. The card keeps its own table code — the food goes
+ * where the guest is sitting — and gets a "Bill with L5" tag beside it.
+ */
+async function billPayers(sessionIds: Types.ObjectId[]): Promise<Map<string, string>> {
+  const payers = new Map<string, string>();
+  if (sessionIds.length === 0) return payers;
+
+  const moved = await TableSession.find({
+    _id: { $in: [...new Set(sessionIds.map(String))] },
+    billMovedTo: { $ne: null },
+  })
+    .select('billMovedTo')
+    .lean();
+  if (moved.length === 0) return payers;
+
+  const paying = await TableSession.find({
+    _id: { $in: moved.map((session) => session.billMovedTo) },
+  })
+    .select('tableCode')
+    .lean();
+  const codeOf = new Map(paying.map((session) => [String(session._id), session.tableCode]));
+
+  for (const session of moved) {
+    const code = codeOf.get(String(session.billMovedTo));
+    if (code) payers.set(String(session._id), code);
+  }
+  return payers;
+}
+
 export interface KitchenQueueOptions {
   station?: KitchenStation;
   includeServed?: boolean;
@@ -626,9 +662,11 @@ export async function getKitchenQueue(options: KitchenQueueOptions = {}): Promis
     .lean();
   const unavailableCodes = new Set(unavailable.map((product) => product.productCode));
 
-  const tickets = rounds.map((round) =>
-    toKdsTicket(round as unknown as OrderRoundDocument, unavailableCodes),
-  );
+  const payers = await billPayers(rounds.map((round) => round.sessionId));
+  const tickets = rounds.map((round) => ({
+    ...toKdsTicket(round as unknown as OrderRoundDocument, unavailableCodes),
+    billWithTableCode: payers.get(String(round.sessionId)) ?? null,
+  }));
 
   if (!options.station) return tickets;
 

@@ -39,6 +39,7 @@ const bill = (lines: ConsolidatedLine[]): ConsolidatedBill => ({
   itemCount: 1,
   orderTypes: ['dining'],
   requiresReview: false,
+  kitchenPendingCount: 0,
 });
 
 describe('toCsv', () => {

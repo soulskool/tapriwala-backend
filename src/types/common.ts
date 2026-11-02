@@ -67,6 +67,13 @@ export interface ConsolidatedBill {
   orderTypes: OrderType[];
   /** True when items were cancelled after preparation started — needs a manager look. */
   requiresReview: boolean;
+  /**
+   * Items on this bill the kitchen has not finished (pending, accepted or
+   * preparing), by quantity, across every table whose bill was moved here.
+   * Closing is refused while this is above zero, so the counter can say so
+   * before it makes a bill number or prints one.
+   */
+  kitchenPendingCount: number;
 }
 
 export interface ExportRequestOptions {
@@ -119,6 +126,12 @@ export interface KdsTicket {
   orderType: OrderType;
   /** Who sent it. Printed on the KOT as the server name. */
   placedByName: string;
+  /**
+   * The table paying for this one, when its bill was moved ("Bill with L5").
+   * The food still goes to `tableCode`; this only tells the kitchen and the
+   * pass why the money shows up on another table. Null when it pays itself.
+   */
+  billWithTableCode: string | null;
   placedAt: Date;
   elapsedMinutes: number;
   status: string;

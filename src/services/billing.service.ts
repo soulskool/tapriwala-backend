@@ -58,6 +58,13 @@ import { nextBillNumber } from './counter.service.js';
  * under a heading that is wrong about a quarter of it. A session of one type
  * (almost all of them) groups exactly as it did before this existed.
  */
+/** The statuses that make the server refuse to close a table. */
+const KITCHEN_UNFINISHED: ReadonlySet<string> = new Set([
+  ITEM_STATUS.PENDING,
+  ITEM_STATUS.ACCEPTED,
+  ITEM_STATUS.PREPARING,
+]);
+
 export async function consolidate(sessionId: string): Promise<ConsolidatedBill> {
   const session = await sessionService.getByIdOrThrow(sessionId);
   if (session.billMovedTo) {
@@ -84,6 +91,7 @@ export async function consolidate(sessionId: string): Promise<ConsolidatedBill> 
   const billable = new Map<string, ConsolidatedLine>();
   const cancelled = new Map<string, ConsolidatedLine>();
   let itemCount = 0;
+  let kitchenPendingCount = 0;
   let requiresReview = session.heldForReview || Boolean(riderHeld);
 
   for (const round of rounds) {
@@ -98,6 +106,7 @@ export async function consolidate(sessionId: string): Promise<ConsolidatedBill> 
 
       if (isCancelled && item.cancelledAfterPrep) requiresReview = true;
       if (!isCancelled) itemCount += item.quantity;
+      if (KITCHEN_UNFINISHED.has(item.status)) kitchenPendingCount += item.quantity;
 
       const existing = bucket.get(key);
       if (existing) {
@@ -164,6 +173,7 @@ export async function consolidate(sessionId: string): Promise<ConsolidatedBill> 
     itemCount,
     orderTypes,
     requiresReview,
+    kitchenPendingCount,
   };
 }
 

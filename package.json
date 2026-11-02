@@ -24,7 +24,8 @@
     "menu:import": "tsx src/scripts/importProducts.ts",
     "seed:reset": "tsx src/scripts/seed.ts --reset",
     "users:activate": "tsx src/scripts/activateUsers.ts",
-    "migrate:zones": "tsx src/scripts/migrateZones.ts"
+    "migrate:zones": "tsx src/scripts/migrateZones.ts",
+    "zones:unlink": "tsx src/scripts/unlinkZones.ts"
   },
   "keywords": [
     "cafe",

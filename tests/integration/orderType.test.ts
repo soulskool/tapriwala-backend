@@ -170,6 +170,8 @@ describe('consolidating a bill', () => {
 
     // Splitting the line changes nothing about the money — four teas either way.
     expect(bill.data.itemCount).toBe(4);
+    // Nothing has been cooked yet, so the counter is told before it bills.
+    expect(bill.data.kitchenPendingCount).toBe(4);
   });
 
   it('freezes the type onto the saved bill, so a reprint still knows', async () => {
