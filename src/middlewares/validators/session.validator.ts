@@ -19,14 +19,10 @@ export const closeSessionValidation: ValidationChain[] = [
   body('force').optional().isBoolean().withMessage('force must be a boolean').toBoolean(),
 ];
 
-/** POST /sessions/:id/transfer — move a running session to another table. */
+/** POST /sessions/:id/transfer — this table's orders go to another table. */
 export const transferSessionValidation: ValidationChain[] = [
-  body('toTableId').isMongoId().withMessage('toTableId must be a valid id'),
-  body('reason')
-    .trim()
-    .notEmpty()
-    .withMessage('A reason is required for a table transfer')
-    .isLength({ max: 200 }),
+  body('toTableId').isMongoId().withMessage('Choose the table to transfer to'),
+  body('reason').optional().trim().isLength({ max: 200 }),
 ];
 
 /** POST /sessions/:id/move-bill — put this table's bill on another table's. */

@@ -426,6 +426,15 @@ export async function getLiveGrid(filter: ListTablesFilter = {}): Promise<LiveTa
             .filter((rider) => rider.isActive && String(rider.billMovedTo) === String(session._id))
             .map((rider) => rider.tableCode)
         : [],
+      transferredFrom: session
+        ? [
+            ...new Set(
+              (session.transferHistory ?? [])
+                .map((entry) => entry.fromTableCode)
+                .filter((code): code is string => Boolean(code) && code !== table.code),
+            ),
+          ]
+        : [],
       roundCount: counts.rounds,
       pendingItemCount: counts.pending,
       readyItemCount: counts.ready,

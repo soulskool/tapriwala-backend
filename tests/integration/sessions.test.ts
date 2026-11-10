@@ -11,7 +11,7 @@ import {
 
 /**
  * Session lifecycle and the concurrency guarantees around it: one live session
- * per table, transfers, and the manager-review hold.
+ * per table and the manager-review hold. Transfers: transfer.test.ts.
  */
 
 let h: Harness;
@@ -82,47 +82,6 @@ describe('one live session per table', () => {
     // Two people at the same table, both ordering: one session, two rounds.
     expect(a.data.sessionId).toBe(b.data.sessionId);
     expect(new Set([a.data.roundNumber, b.data.roundNumber]).size).toBe(2);
-  });
-});
-
-describe('transferring a session', () => {
-  it('requires a reason', async () => {
-    const r4 = await tile(h, 'R4');
-    const result = await h.api('POST', `/sessions/${r4.sessionId}/transfer`, {
-      token: h.tokens.billing,
-      body: { toTableId: h.tables.L5!._id },
-    });
-    expect(result.status).toBe(400);
-  });
-
-  it('moves the session and frees the original table', async () => {
-    const r4 = await tile(h, 'R4');
-    const result = await h.api('POST', `/sessions/${r4.sessionId}/transfer`, {
-      token: h.tokens.billing,
-      body: { toTableId: h.tables.L5!._id, reason: 'wrong table opened' },
-    });
-
-    expect(result.data.tableCode).toBe('L5');
-    expect((await tile(h, 'R4')).status).toBe('empty');
-    expect((await tile(h, 'L5')).status).not.toBe('empty');
-  });
-
-  it('renames the KDS tickets so a cook sees the right table', async () => {
-    const l5 = await tile(h, 'L5');
-    const rounds = await h.api('GET', `/sessions/${l5.sessionId}/rounds`, {
-      token: h.tokens.waiter,
-    });
-    expect(rounds.data.every((round: any) => round.tableCode === 'L5')).toBe(true);
-  });
-
-  it('refuses to move onto an occupied table', async () => {
-    const m1 = await tile(h, 'M1');
-    const result = await h.api('POST', `/sessions/${m1.sessionId}/transfer`, {
-      token: h.tokens.billing,
-      body: { toTableId: h.tables.L5!._id, reason: 'should fail' },
-    });
-
-    expect(result.status).toBe(409);
   });
 });
 

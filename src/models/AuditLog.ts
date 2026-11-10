@@ -59,6 +59,9 @@ const auditLogSchema = new Schema<IAuditLog>(
 // "Show me everything that happened to this session/table today."
 auditLogSchema.index({ entityType: 1, entityId: 1, timestamp: -1 });
 auditLogSchema.index({ timestamp: -1 });
+// The Audit screen's table filter. The log gains a row on every tap, so it is
+// the biggest collection, and without this a table filter read all of it.
+auditLogSchema.index({ tableCode: 1, timestamp: -1 });
 
 export const AuditLog: Model<IAuditLog> =
   (mongoose.models.AuditLog as Model<IAuditLog>) || model<IAuditLog>('AuditLog', auditLogSchema);

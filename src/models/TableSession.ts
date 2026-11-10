@@ -47,7 +47,6 @@ export interface ITableSession {
   /** Set when kitchen/billing disagree (e.g. item cancelled after serving). */
   heldForReview: boolean;
   reviewNote: string;
-  /** Populated when an admin moves a running session to a different table. */
   /**
    * Set when this table's bill was moved onto another table's ("M4 pays with
    * M3"). Points at the session that pays — always directly, never at another
@@ -57,11 +56,22 @@ export interface ITableSession {
   billMovedTo: Types.ObjectId | null;
   billMovedAt: Date | null;
   billMovedBy: { role: string; userId: Types.ObjectId | null; name: string } | null;
+  /**
+   * One entry per transfer that landed on this session: the session itself
+   * moving to an empty table, or another table's orders joining it. Shown on
+   * the floor as "From M1"; never printed on the bill.
+   */
   transferHistory: {
     fromTableId: Types.ObjectId;
     toTableId: Types.ObjectId;
+    /** Codes at the time of the move; old entries predate them and hold ''. */
+    fromTableCode: string;
+    toTableCode: string;
+    /** The closed session whose orders joined this one, when it was a merge. */
+    mergedSessionId: Types.ObjectId | null;
     at: Date;
     byUserId: Types.ObjectId | null;
+    byName: string;
     reason: string;
   }[];
   createdAt: Date;
@@ -112,8 +122,12 @@ const tableSessionSchema = new Schema<ITableSession>(
           {
             fromTableId: { type: Schema.Types.ObjectId, ref: 'TableMaster', required: true },
             toTableId: { type: Schema.Types.ObjectId, ref: 'TableMaster', required: true },
+            fromTableCode: { type: String, default: '' },
+            toTableCode: { type: String, default: '' },
+            mergedSessionId: { type: Schema.Types.ObjectId, ref: 'TableSession', default: null },
             at: { type: Date, default: Date.now },
             byUserId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+            byName: { type: String, default: '' },
             reason: { type: String, default: '' },
           },
           { _id: false },
@@ -139,6 +153,9 @@ tableSessionSchema.index(
 tableSessionSchema.index({ isActive: 1, status: 1 });
 // Reporting / history browsing.
 tableSessionSchema.index({ openedAt: -1 });
+// The session list filtered by status only ("all closed sessions"): the
+// `{ isActive, status }` index above cannot serve a query without `isActive`.
+tableSessionSchema.index({ status: 1, openedAt: -1 });
 tableSessionSchema.index({ sessionNumber: -1 });
 
 /** Keeps `isActive` honest no matter which code path flips the status. */

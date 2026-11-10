@@ -77,19 +77,25 @@ export const close = asyncHandler(async (req, res) => {
   return sendSuccess(res, session, `Table ${session.tableCode} is now free`);
 });
 
-/** POST /sessions/:id/transfer — admin/billing move a session to another table. */
+/** POST /sessions/:id/transfer — this table's orders go to another table; it frees. */
 export const transfer = asyncHandler(async (req, res) => {
-  const { toTableId, reason } = req.body as { toTableId: string; reason: string };
+  const { toTableId, reason } = req.body as { toTableId: string; reason?: string };
 
-  const session = await sessionService.transfer({
+  const { session, merged, fromTableCode } = await sessionService.transfer({
     sessionId: req.params.id as string,
     toTableId,
-    reason,
+    ...(reason !== undefined ? { reason } : {}),
     actor: getActor(req),
     ip: req.ip ?? null,
   });
 
-  return sendSuccess(res, session, `Session moved to ${session.tableCode}`);
+  return sendSuccess(
+    res,
+    session,
+    merged
+      ? `${fromTableCode}'s orders added to ${session.tableCode}. ${fromTableCode} is free.`
+      : `${fromTableCode} moved to ${session.tableCode}. ${fromTableCode} is free.`,
+  );
 });
 
 /** POST /sessions/:id/move-bill — this table's bill goes on another table's. */

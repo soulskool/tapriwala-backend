@@ -573,6 +573,9 @@ export function toKdsTicket(
  * was ready, and on a billed close the guest genuinely paid for it, so
  * rewriting history to tidy the board would be a lie. This also clears the
  * ghosts already sitting in the database, with no migration.
+ *
+ * The callers only ever hand it the last day's rounds (`KITCHEN_LOOKBACK_MINUTES`),
+ * so the ghosts no longer pile up into every read.
  */
 async function dropClosedSessions<T extends { sessionId: Types.ObjectId }>(
   rounds: T[],
@@ -623,6 +626,21 @@ async function billPayers(sessionIds: Types.ObjectId[]): Promise<Map<string, str
   return payers;
 }
 
+/**
+ * How far back the live board looks, in minutes.
+ *
+ * Without a bound, every read of the board scanned every round still marked
+ * ready from every day since launch -- a billed close leaves "ready" items as
+ * they were, on purpose (see `dropClosedSessions`) -- then threw them all
+ * away. The pile, and the time each read took, grew every day. Nothing a
+ * kitchen is still working on is a day old; an older round is a forgotten one
+ * on a table that has long since left, and it stays in billing and history.
+ */
+export const KITCHEN_LOOKBACK_MINUTES = 24 * 60;
+
+const lookbackCutoff = (minutes = KITCHEN_LOOKBACK_MINUTES): Date =>
+  new Date(Date.now() - Math.min(minutes, KITCHEN_LOOKBACK_MINUTES) * 60_000);
+
 export interface KitchenQueueOptions {
   station?: KitchenStation;
   includeServed?: boolean;
@@ -646,11 +664,9 @@ export async function getKitchenQueue(options: KitchenQueueOptions = {}): Promis
 
   const query: Record<string, unknown> = {
     status: options.includeServed ? { $ne: ROUND_STATUS.CANCELLED } : { $in: liveStatuses },
+    // Always bounded, served by the `{ status, placedAt }` index.
+    placedAt: { $gte: lookbackCutoff(options.sinceMinutes) },
   };
-
-  if (options.sinceMinutes) {
-    query.placedAt = { $gte: new Date(Date.now() - options.sinceMinutes * 60_000) };
-  }
 
   const rounds = await dropClosedSessions(
     await OrderRound.find(query).sort({ placedAt: 1 }).lean(),
@@ -689,6 +705,7 @@ export async function getUnservedReadyRounds(thresholdMinutes = env.readyOrderEs
     await OrderRound.find({
       status: ROUND_STATUS.READY,
       readyAt: { $lte: cutoff },
+      placedAt: { $gte: lookbackCutoff() },
     })
       .sort({ readyAt: 1 })
       .lean(),

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { OrderRound } from '../../src/models/index.js';
 import {
   createHarness,
   customerOrder,
@@ -279,6 +280,52 @@ describe('a closed table leaves nothing on the board', () => {
       token: h.tokens.waiter,
     });
     expect(ready.data.rounds.some((round: any) => round.sessionId === nagSession)).toBe(false);
+  });
+});
+
+/**
+ * The board reads one day back, never further.
+ *
+ * Unbounded, every read of the board scanned every "ready" round left behind
+ * by a billed close since launch, so the board got a little slower every day.
+ */
+describe('the board only looks at the last day', () => {
+  it('leaves a day-old round off the board and off the floor nag', async () => {
+    const order = await customerOrder(
+      h,
+      'R1',
+      [{ productCode: 'BEV001', quantity: 1 }],
+      'old-round-1',
+    );
+    const oldSession = order.data.sessionId;
+    const ticket = await findTicket(h, oldSession);
+    await setItemStatus(h, ticket.roundId, ticket.items[0].itemId, 'ready');
+
+    // Still ready, its table still open: only its age has changed.
+    const dayAgo = new Date(Date.now() - 25 * 60 * 60_000);
+    await OrderRound.updateOne(
+      { _id: ticket.roundId },
+      { $set: { placedAt: dayAgo, readyAt: dayAgo } },
+    );
+
+    expect(await findTicket(h, oldSession)).toBeUndefined();
+
+    const withServed = await h.api('GET', '/kitchen/queue?includeServed=true', {
+      token: h.tokens.kitchen,
+    });
+    expect(withServed.data.tickets.some((t: any) => t.sessionId === oldSession)).toBe(false);
+
+    const ready = await h.api('GET', '/kitchen/ready?thresholdMinutes=0', {
+      token: h.tokens.waiter,
+    });
+    expect(ready.data.rounds.some((round: any) => round.sessionId === oldSession)).toBe(false);
+
+    // Nothing is deleted: the bill still has it.
+    const rounds = await h.api('GET', `/sessions/${oldSession}/rounds`, {
+      token: h.tokens.admin,
+    });
+    expect(rounds.data).toHaveLength(1);
+    expect(rounds.data[0].items[0].status).toBe('ready');
   });
 });
 

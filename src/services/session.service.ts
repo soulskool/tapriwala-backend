@@ -809,37 +809,49 @@ async function settleRiders(paying: TableSessionDocument, input: CloseSessionInp
 // ─── Transfer ────────────────────────────────────────────────────────────────
 
 /**
- * Moves a running session to a different table.
+ * "M1's orders go to L1" — and M1 is free for the next guests straight away.
  *
- * A waiter opening the wrong table is not an edge case, it is a Tuesday. This
- * rewrites the denormalised `tableId`/`tableCode` on the session's rounds and
- * open requests too, so the KDS ticket a cook is looking at renames itself.
+ * Two shapes, picked by whether L1 already has an open order:
+ *
+ * - L1 is empty: the whole session moves. Its rounds and open requests get
+ *   L1's `tableId`/`tableCode`, so the KDS ticket a cook is looking at renames
+ *   itself, and M1 has no session left.
+ * - L1 is open: M1's rounds join L1's session, numbered after L1's own, and
+ *   M1's session closes ("Transferred to L1"). One order, one bill, one table
+ *   on the kitchen board — nothing points across tables afterwards.
+ *
+ * Nothing is cancelled either way: food still cooking for M1 carries on as
+ * L1's. L1's session records the transfer in `transferHistory`, which the
+ * floor shows as "From M1" and the bill never prints.
  */
 export async function transfer(input: {
   sessionId: string;
   toTableId: string;
   actor: Actor;
-  reason: string;
+  reason?: string;
   ip?: string | null;
-}): Promise<TableSessionDocument> {
+}): Promise<{ session: TableSessionDocument; merged: boolean; fromTableCode: string }> {
   const session = await getByIdOrThrow(input.sessionId);
   if (session.status === SESSION_STATUS.CLOSED) {
-    throw ApiError.invalidState('Cannot transfer a closed session');
+    throw ApiError.invalidState('This table is already closed');
   }
 
   if (String(session.tableId) === input.toTableId) {
-    throw ApiError.badRequest('The session is already on that table');
+    throw ApiError.badRequest('Pick a different table');
   }
 
   const target = await TableMaster.findById(input.toTableId).select('code isActive').lean();
   if (!target) throw ApiError.notFound('Destination table not found');
-  if (!target.isActive) throw ApiError.invalidState('Destination table is not in service');
+  if (!target.isActive) throw ApiError.invalidState(`${target.code} is not in service`);
+
+  // A printed bill is money on paper: its orders cannot move under it.
+  await assertNotBilled(session, 'Cannot transfer');
 
   const occupied = await findActiveByTable(target._id);
   if (occupied) {
-    throw ApiError.conflict(`${target.code} already has an open session. Close or move it first.`, {
-      blockingSessionId: String(occupied._id),
-    });
+    await assertNotBilled(occupied, `Cannot transfer to ${target.code}`);
+    const merged = await mergeInto(session, occupied, input);
+    return { session: merged, merged: true, fromTableCode: session.tableCode };
   }
 
   const fromTableId = session.tableId;
@@ -848,13 +860,26 @@ export async function transfer(input: {
   session.transferHistory.push({
     fromTableId,
     toTableId: target._id,
+    fromTableCode,
+    toTableCode: target.code,
+    mergedSessionId: null,
     at: new Date(),
     byUserId: input.actor.userId,
-    reason: input.reason,
+    byName: input.actor.name,
+    reason: input.reason ?? '',
   });
   session.tableId = target._id;
   session.tableCode = target.code;
-  await session.save();
+  try {
+    await session.save();
+  } catch (error) {
+    // Someone opened the destination in the same instant. Their session wins
+    // the unique index; nothing here was written.
+    if ((error as { code?: number }).code === 11000) {
+      throw ApiError.conflict(`${target.code} was just opened. Try the transfer again.`);
+    }
+    throw error;
+  }
 
   await Promise.all([
     OrderRound.updateMany(
@@ -876,11 +901,12 @@ export async function transfer(input: {
     tableCode: target.code,
     before: { tableId: String(fromTableId), tableCode: fromTableCode },
     after: { tableId: String(target._id), tableCode: target.code },
-    meta: { reason: input.reason },
+    meta: { fromTableCode, toTableCode: target.code, merged: false, reason: input.reason ?? '' },
     ip: input.ip ?? null,
   });
 
-  // Both the old and the new table screens need to repaint.
+  // Both the old and the new table screens need to repaint, and the kitchen
+  // board renames the tickets.
   broadcast(
     SOCKET_EVENTS.SESSION_STATUS_CHANGE,
     {
@@ -898,7 +924,149 @@ export async function transfer(input: {
     { tableId: String(fromTableId) },
   );
 
-  return session;
+  logger.info(`${fromTableCode} transferred to ${target.code} by ${input.actor.name}`);
+  return { session, merged: false, fromTableCode };
+}
+
+/**
+ * The "L1 is already open" half of a transfer: M1's rounds become L1's.
+ *
+ * M1 closes first, so a guest scanning M1's QR from here on opens a fresh
+ * session instead of adding to one that is being emptied. Its rounds then move
+ * over with round numbers after L1's (they are unique per session) and an
+ * idempotency key tagged with where they came from, so a key M1's phone and
+ * L1's phone happened to share can never collide.
+ */
+async function mergeInto(
+  from: TableSessionDocument,
+  into: TableSessionDocument,
+  input: { actor: Actor; reason?: string; ip?: string | null },
+): Promise<TableSessionDocument> {
+  const previousStatus = from.status;
+  from.status = SESSION_STATUS.CLOSED;
+  from.isActive = false;
+  from.closedAt = new Date();
+  from.closedBy = actorSnapshot(input.actor);
+  await from.save();
+
+  const [rounds, last] = await Promise.all([
+    OrderRound.find({ sessionId: from._id }).sort({ roundNumber: 1 }),
+    OrderRound.findOne({ sessionId: into._id }).sort({ roundNumber: -1 }).select('roundNumber'),
+  ]);
+
+  let nextNumber = Math.max(last?.roundNumber ?? 0, into.totalRounds);
+  for (const round of rounds) {
+    nextNumber += 1;
+    round.sessionId = into._id;
+    round.tableId = into.tableId;
+    round.tableCode = into.tableCode;
+    round.roundNumber = nextNumber;
+    round.idempotencyKey = `${round.idempotencyKey}@${String(from._id)}`;
+    await round.save();
+  }
+  // Keeps the next order's $inc counter ahead of the rounds just added.
+  await TableSession.updateOne({ _id: into._id }, { $max: { totalRounds: nextNumber } });
+
+  await ServiceRequest.updateMany(
+    { sessionId: from._id, status: { $in: ACTIVE_SERVICE_REQUEST_STATUSES } },
+    { $set: { sessionId: into._id, tableId: into.tableId, tableCode: into.tableCode } },
+  );
+
+  // Tables whose bill had been moved onto M1 (the older "Move bill") follow
+  // its orders to whoever pays for L1.
+  await TableSession.updateMany(
+    { billMovedTo: from._id },
+    { $set: { billMovedTo: into.billMovedTo ?? into._id } },
+  );
+
+  const fresh = (await TableSession.findById(into._id)) ?? into;
+  fresh.transferHistory.push({
+    fromTableId: from.tableId,
+    toTableId: fresh.tableId,
+    fromTableCode: from.tableCode,
+    toTableCode: fresh.tableCode,
+    mergedSessionId: from._id,
+    at: new Date(),
+    byUserId: input.actor.userId,
+    byName: input.actor.name,
+    reason: input.reason ?? '',
+  });
+  fresh.guestCount = Math.min(100, fresh.guestCount + from.guestCount);
+  if (from.heldForReview && !fresh.heldForReview) {
+    fresh.heldForReview = true;
+    fresh.reviewNote = `From ${from.tableCode}: ${from.reviewNote}`.slice(0, 500);
+  }
+  await fresh.save();
+
+  await auditService.record({
+    entityType: AUDIT_ENTITY.SESSION,
+    entityId: from._id,
+    action: AUDIT_ACTION.SESSION_TRANSFERRED,
+    actor: input.actor,
+    sessionId: from._id,
+    tableCode: from.tableCode,
+    before: { tableCode: from.tableCode, status: previousStatus },
+    after: { tableCode: fresh.tableCode, mergedIntoSessionId: String(fresh._id) },
+    meta: {
+      fromTableCode: from.tableCode,
+      toTableCode: fresh.tableCode,
+      merged: true,
+      roundsMoved: rounds.map((round) => round.kotId),
+      reason: input.reason ?? '',
+    },
+    ip: input.ip ?? null,
+  });
+  await auditService.record({
+    entityType: AUDIT_ENTITY.SESSION,
+    entityId: from._id,
+    action: AUDIT_ACTION.SESSION_CLOSED,
+    actor: input.actor,
+    sessionId: from._id,
+    tableCode: from.tableCode,
+    before: { status: previousStatus, runningTotal: from.runningTotal },
+    after: { status: from.status, closedAt: from.closedAt },
+    meta: {
+      billingExportId: null,
+      forced: false,
+      itemsWrittenOff: 0,
+      note: `Transferred to ${fresh.tableCode}`,
+    },
+    ip: input.ip ?? null,
+  });
+
+  broadcast(
+    SOCKET_EVENTS.SESSION_CLOSED,
+    {
+      sessionId: String(from._id),
+      tableId: String(from.tableId),
+      tableCode: from.tableCode,
+      closedAt: from.closedAt,
+      total: 0,
+      transferredTo: fresh.tableCode,
+    },
+    { tableId: String(from.tableId), sessionId: String(from._id) },
+  );
+
+  // L1's status, total and round count now include M1's orders. Announced
+  // even when the status did not change, because the total did.
+  const updated = (await recompute(fresh._id, { emit: false })) ?? fresh;
+  broadcast(
+    SOCKET_EVENTS.SESSION_STATUS_CHANGE,
+    {
+      sessionId: String(updated._id),
+      tableId: String(updated.tableId),
+      tableCode: updated.tableCode,
+      status: updated.status,
+      runningTotal: updated.runningTotal,
+      transferredFrom: from.tableCode,
+    },
+    { tableId: String(updated.tableId), sessionId: String(updated._id) },
+  );
+
+  logger.info(`${from.tableCode} transferred into ${updated.tableCode} by ${input.actor.name}`, {
+    rounds: rounds.length,
+  });
+  return updated;
 }
 
 // ─── Review hold ─────────────────────────────────────────────────────────────

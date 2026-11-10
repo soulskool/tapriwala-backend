@@ -101,6 +101,8 @@ export interface LiveTableTile {
   billWithTableCode: string | null;
   /** Open tables whose bill was moved onto this one. */
   billIncludes: string[];
+  /** Tables whose orders were transferred onto this one. Floor display only. */
+  transferredFrom: string[];
   roundCount: number;
   pendingItemCount: number;
   readyItemCount: number;

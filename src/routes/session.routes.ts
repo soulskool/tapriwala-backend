@@ -63,10 +63,14 @@ router.post(
   sessionController.close,
 );
 
-/** Moving a running session between tables needs a reason and is audit-logged. */
+/**
+ * "M1's orders go to L1": joins L1's open order or takes over an empty L1, and
+ * frees M1 at once. Waiters too — they are at the table when the party moves.
+ * Audit-logged with the actor.
+ */
 router.post(
   '/:id/transfer',
-  authorize(ROLES.BILLING),
+  authorize(ROLES.WAITER, ROLES.BILLING),
   validate([objectIdParam('id', 'Session id'), ...transferSessionValidation]),
   sessionController.transfer,
 );
